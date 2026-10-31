@@ -7,6 +7,7 @@ standardizing error translation and preventing secret leakage.
 
 import logging
 from typing import Any, Dict, List, Optional
+import anyio
 from postgrest.exceptions import APIError
 
 from app.core.exceptions import ClarityXException, DatabaseConnectionError
@@ -25,7 +26,6 @@ class BaseRepository:
 
     def handle_db_error(self, operation: str, exc: Exception) -> None:
         """Translates PostgREST / database exceptions into clean application errors
-
         without leaking credentials or internal database traces.
         """
         logger.error(f"Database error during {operation}: {type(exc).__name__}", exc_info=True)
@@ -47,7 +47,9 @@ class ProfileRepository(BaseRepository):
     async def get_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a user profile by ID."""
         try:
-            response = self.client.table("profiles").select("*").eq("id", user_id).execute()
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("profiles").select("*").eq("id", user_id).execute()
+            )
             if response.data and len(response.data) > 0:
                 return response.data[0]
             return None
@@ -65,7 +67,9 @@ class ProfileRepository(BaseRepository):
                 "email": email or "",
                 "full_name": full_name or "",
             }
-            response = self.client.table("profiles").insert(profile_data).execute()
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("profiles").insert(profile_data).execute()
+            )
             if response.data and len(response.data) > 0:
                 return response.data[0]
             return None
@@ -110,8 +114,8 @@ class ProfileRepository(BaseRepository):
     async def update_profile(self, user_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Updates profile attributes for an existing user."""
         try:
-            response = (
-                self.client.table("profiles")
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("profiles")
                 .update(updates)
                 .eq("id", user_id)
                 .execute()
@@ -127,11 +131,34 @@ class ProfileRepository(BaseRepository):
 class ResearchRepository(BaseRepository):
     """Repository managing research sessions and related entities."""
 
+    async def create_session(
+        self, user_id: str, research_goal: str
+    ) -> Optional[Dict[str, Any]]:
+        """Creates a new research session assigned strictly to the authenticated user."""
+        try:
+            session_data = {
+                "user_id": user_id,
+                "research_goal": research_goal.strip(),
+                "status": "pending",
+                "summary": "",
+            }
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("research_sessions")
+                .insert(session_data)
+                .execute()
+            )
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as exc:
+            self.handle_db_error("create_session", exc)
+            return None
+
     async def get_session_by_id(self, session_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a research session verifying user ownership."""
         try:
-            response = (
-                self.client.table("research_sessions")
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("research_sessions")
                 .select("*")
                 .eq("id", session_id)
                 .eq("user_id", user_id)
@@ -145,20 +172,100 @@ class ResearchRepository(BaseRepository):
             return None
 
     async def list_user_sessions(
-        self, user_id: str, limit: int = 10, offset: int = 0
+        self,
+        user_id: str,
+        limit: int = 10,
+        offset: int = 0,
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Lists research sessions belonging to a user with pagination."""
+        """Lists research sessions belonging to a user with pagination and optional status filter."""
         try:
-            response = (
-                self.client.table("research_sessions")
-                .select("*")
-                .eq("user_id", user_id)
-                .order("created_at", desc=True)
-                .range(offset, offset + limit - 1)
-                .execute()
-            )
+            def _build_and_run():
+                query = (
+                    self.client.table("research_sessions")
+                    .select("*")
+                    .eq("user_id", user_id)
+                )
+                if status:
+                    query = query.eq("status", status)
+                query = query.order("created_at", desc=True).range(
+                    offset, offset + limit - 1
+                )
+                return query.execute()
+
+            response = await anyio.to_thread.run_sync(_build_and_run)
             return response.data or []
         except Exception as exc:
             self.handle_db_error("list_user_sessions", exc)
             return []
 
+    async def count_user_sessions(
+        self, user_id: str, status: Optional[str] = None
+    ) -> int:
+        """Counts total research sessions belonging to a user with optional status filter."""
+        try:
+            def _build_and_run():
+                query = (
+                    self.client.table("research_sessions")
+                    .select("id", count="exact")
+                    .eq("user_id", user_id)
+                )
+                if status:
+                    query = query.eq("status", status)
+                return query.execute()
+
+            response = await anyio.to_thread.run_sync(_build_and_run)
+            return response.count or 0
+        except Exception as exc:
+            logger.warning(f"Error counting user sessions: {type(exc).__name__}")
+            return 0
+
+    async def update_session(
+        self, session_id: str, user_id: str, updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Updates a research session verifying user ownership."""
+        try:
+            existing = await self.get_session_by_id(session_id, user_id)
+            if not existing:
+                return None
+
+            safe_updates = {
+                k: v
+                for k, v in updates.items()
+                if k in ("research_goal", "status", "summary") and v is not None
+            }
+            if not safe_updates:
+                return existing
+
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("research_sessions")
+                .update(safe_updates)
+                .eq("id", session_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return await self.get_session_by_id(session_id, user_id)
+        except Exception as exc:
+            self.handle_db_error("update_session", exc)
+            return None
+
+    async def delete_session(self, session_id: str, user_id: str) -> bool:
+        """Deletes a research session verifying user ownership."""
+        try:
+            existing = await self.get_session_by_id(session_id, user_id)
+            if not existing:
+                return False
+
+            await anyio.to_thread.run_sync(
+                lambda: self.client.table("research_sessions")
+                .delete()
+                .eq("id", session_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return True
+        except Exception as exc:
+            self.handle_db_error("delete_session", exc)
+            return False

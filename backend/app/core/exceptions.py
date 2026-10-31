@@ -101,7 +101,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         logger.warning(f"Validation error on {request.url.path}: {summary}")
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={
                 "success": False,
                 "message": "Validation error in request payload",
