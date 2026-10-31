@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -10,11 +11,30 @@ logger = logging.getLogger("clarityx.exceptions")
 class ClarityXException(Exception):
     """Base application exception for ClarityX."""
 
-    def __init__(self, message: str, status_code: int = 400, detail: str = ""):
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 400,
+        detail: str = "",
+        headers: Optional[Dict[str, str]] = None,
+    ):
         self.message = message
         self.status_code = status_code
         self.detail = detail or message
+        self.headers = headers
         super().__init__(message)
+
+
+class AuthenticationError(ClarityXException):
+    """Raised when authentication fails or access token is invalid/missing."""
+
+    def __init__(self, message: str = "Authentication required", detail: str = ""):
+        super().__init__(
+            message=message,
+            status_code=401,
+            detail=detail or message,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 class DatabaseConfigurationError(ClarityXException):
@@ -56,6 +76,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": exc.message,
                 "detail": exc.detail,
             },
+            headers=exc.headers,
         )
 
     @app.exception_handler(StarletteHTTPException)
