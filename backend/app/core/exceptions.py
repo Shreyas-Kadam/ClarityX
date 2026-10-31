@@ -51,6 +51,51 @@ class DatabaseConnectionError(ClarityXException):
         super().__init__(message=message, status_code=503, detail=message)
 
 
+class SSRFSecurityError(ClarityXException):
+    """Raised when a URL violates SSRF security policies (private, loopback, metadata, invalid scheme)."""
+
+    def __init__(
+        self,
+        message: str = "Security validation failed: Prohibited destination address.",
+        detail: str = "",
+    ):
+        super().__init__(message=message, status_code=400, detail=detail or message)
+
+
+class ContentSizeExceededError(ClarityXException):
+    """Raised when downloaded website content exceeds maximum allowed body size."""
+
+    def __init__(
+        self,
+        message: str = "Content size exceeds maximum allowable limit.",
+        detail: str = "",
+    ):
+        super().__init__(message=message, status_code=413, detail=detail or message)
+
+
+class UnsupportedContentTypeError(ClarityXException):
+    """Raised when a target website provides an unsupported MIME type (e.g. binary/media)."""
+
+    def __init__(
+        self,
+        message: str = "Unsupported content type. Only HTML and text documents can be processed.",
+        detail: str = "",
+    ):
+        super().__init__(message=message, status_code=415, detail=detail or message)
+
+
+class ExtractionError(ClarityXException):
+    """Raised when content extraction fails across both primary and fallback extractors."""
+
+    def __init__(
+        self,
+        message: str = "Failed to extract readable content from the provided source.",
+        detail: str = "",
+        status_code: int = 422,
+    ):
+        super().__init__(message=message, status_code=status_code, detail=detail or message)
+
+
 def sanitize_validation_errors(errors: list) -> list:
     """Strips raw input values and sensitive data from validation error structures."""
     sanitized = []
@@ -69,6 +114,19 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ClarityXException)
     async def clarityx_exception_handler(request: Request, exc: ClarityXException):
         logger.warning(f"ClarityX error on {request.url.path}: {exc.message}")
+
+        # Ensure all SSRF security errors return generic client-facing messages without leaking internal IPs/hostnames
+        if isinstance(exc, SSRFSecurityError):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={
+                    "success": False,
+                    "message": "The requested URL cannot be accessed for security reasons.",
+                    "detail": "Prohibited destination address or protocol.",
+                },
+                headers=exc.headers,
+            )
+
         return JSONResponse(
             status_code=exc.status_code,
             content={

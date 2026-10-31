@@ -58,6 +58,20 @@ class Settings:
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 
+    # Extraction Settings (Phase 4)
+    MAX_WEBSITE_CONTENT_LENGTH: int = int(
+        os.getenv("MAX_WEBSITE_CONTENT_LENGTH", str(5 * 1024 * 1024))
+    )  # 5 MB
+    WEBSITE_EXTRACTION_TIMEOUT: float = float(
+        os.getenv("WEBSITE_EXTRACTION_TIMEOUT", "15.0")
+    )
+    JINA_READER_TIMEOUT: float = float(os.getenv("JINA_READER_TIMEOUT", "10.0"))
+    MAX_REDIRECTS: int = int(os.getenv("MAX_REDIRECTS", "5"))
+    JINA_READER_BASE_URL: str = os.getenv("JINA_READER_BASE_URL", "https://r.jina.ai")
+    USER_AGENT: str = (
+        "ClarityX/0.1.0 (AI Information Gap Detection; +https://github.com/ClarityX)"
+    )
+
     @property
     def is_supabase_configured(self) -> bool:
         """Checks whether valid Supabase configuration is present."""
