@@ -201,5 +201,12 @@ class SourceListEnvelope(BaseModel):
     data: SourceListResponse
 
 
+class SourceDeleteResponse(BaseModel):
+    """Standard API envelope for source deletion."""
+
+    success: bool = True
+    message: str = "Source deleted successfully"
+
+
 
 

@@ -8,6 +8,7 @@ from app.core.exceptions import register_exception_handlers
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
 from app.routes.research import router as research_router
+from app.routes.sources import router as sources_router
 
 # Setup application logging
 logging.basicConfig(
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(research_router)
+    app.include_router(sources_router)
 
     return app
 
