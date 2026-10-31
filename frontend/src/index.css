@@ -5,6 +5,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --color-brand-dark: #2B2D42;
+  --color-brand-neutral: #8D99AE;
+  --color-brand-light: #EDF2F4;
+  --color-brand-accent: #EF233C;
+  --color-brand-cta: #D90429;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
@@ -49,82 +57,171 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --background: #EDF2F4;
+    --foreground: #2B2D42;
+    --card: #EDF2F4;
+    --card-foreground: #2B2D42;
+    --popover: #EDF2F4;
+    --popover-foreground: #2B2D42;
+    --primary: #2B2D42;
+    --primary-foreground: #EDF2F4;
+    --secondary: #8D99AE;
+    --secondary-foreground: #2B2D42;
+    --muted: #EDF2F4;
+    --muted-foreground: #8D99AE;
+    --accent: #EF233C;
+    --accent-foreground: #FFFFFF;
+    --destructive: #D90429;
+    --border: rgba(141, 153, 174, 0.25);
+    --input: rgba(141, 153, 174, 0.2);
+    --ring: #EF233C;
+    --radius: 0.75rem;
+    --sidebar: #2B2D42;
+    --sidebar-foreground: #EDF2F4;
+    --sidebar-primary: #D90429;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: rgba(141, 153, 174, 0.15);
+    --sidebar-accent-foreground: #EDF2F4;
+    --sidebar-border: rgba(141, 153, 174, 0.2);
+    --sidebar-ring: #EF233C;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
-    @apply bg-background text-foreground;
-    }
+    background-color: #EDF2F4;
+    color: #2B2D42;
+    min-height: 100vh;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
   html {
     @apply font-sans;
-    }
+  }
+}
+
+/* =============================================================================
+   GLASSMORPHISM DESIGN UTILITIES
+   ============================================================================= */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 10px 30px -5px rgba(43, 45, 66, 0.08);
+}
+
+.glass-panel-dark {
+  background: rgba(43, 45, 66, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(141, 153, 174, 0.2);
+  box-shadow: 0 12px 36px 0 rgba(15, 16, 26, 0.35);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 4px 20px -2px rgba(43, 45, 66, 0.06);
+}
+
+.glass-subtle {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* =============================================================================
+   NEUMORPHISM DESIGN UTILITIES (#EDF2F4 base)
+   ============================================================================= */
+.neu-raised {
+  background: #EDF2F4;
+  box-shadow: 6px 6px 14px rgba(141, 153, 174, 0.35),
+              -6px -6px 14px rgba(255, 255, 255, 0.95);
+}
+
+.neu-raised-sm {
+  background: #EDF2F4;
+  box-shadow: 3px 3px 8px rgba(141, 153, 174, 0.28),
+              -3px -3px 8px rgba(255, 255, 255, 0.9);
+}
+
+.neu-interactive {
+  background: #EDF2F4;
+  box-shadow: 4px 4px 10px rgba(141, 153, 174, 0.3),
+              -4px -4px 10px rgba(255, 255, 255, 0.9);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.neu-interactive:hover {
+  box-shadow: 6px 6px 16px rgba(141, 153, 174, 0.38),
+              -6px -6px 16px rgba(255, 255, 255, 0.98);
+  transform: translateY(-1px);
+}
+.neu-interactive:active, .neu-active {
+  box-shadow: inset 3px 3px 6px rgba(141, 153, 174, 0.35),
+              inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+  transform: translateY(1px);
+}
+
+.neu-inset {
+  background: #EDF2F4;
+  box-shadow: inset 3px 3px 6px rgba(141, 153, 174, 0.32),
+              inset -3px -3px 6px rgba(255, 255, 255, 0.95);
+}
+
+.neu-inset-focus:focus-within {
+  box-shadow: inset 3px 3px 6px rgba(141, 153, 174, 0.35),
+              inset -3px -3px 6px rgba(255, 255, 255, 0.95),
+              0 0 0 2px rgba(239, 35, 60, 0.4);
+}
+
+/* Call to Action Neumorphic button in #D90429 */
+.neu-btn-cta {
+  background: linear-gradient(135deg, #EF233C, #D90429);
+  box-shadow: 4px 4px 12px rgba(217, 4, 41, 0.35),
+              -2px -2px 8px rgba(255, 255, 255, 0.4);
+  color: #FFFFFF;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.neu-btn-cta:hover {
+  background: linear-gradient(135deg, #ff3850, #be0323);
+  box-shadow: 5px 5px 16px rgba(217, 4, 41, 0.45),
+              -2px -2px 10px rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
+}
+.neu-btn-cta:active {
+  box-shadow: inset 2px 2px 6px rgba(100, 0, 15, 0.6),
+              inset -2px -2px 6px rgba(239, 35, 60, 0.4);
+  transform: translateY(1px);
+}
+
+/* Primary Dark Neumorphism for Sidebar / Dark Sections (#2B2D42 base) */
+.neu-dark-raised {
+  background: #2B2D42;
+  box-shadow: 4px 4px 10px rgba(18, 19, 30, 0.55),
+              -2px -2px 8px rgba(65, 68, 98, 0.25);
+}
+.neu-dark-interactive {
+  background: #2B2D42;
+  box-shadow: 3px 3px 8px rgba(18, 19, 30, 0.5),
+              -2px -2px 6px rgba(65, 68, 98, 0.2);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.neu-dark-interactive:hover {
+  box-shadow: 4px 4px 12px rgba(18, 19, 30, 0.6),
+              -3px -3px 8px rgba(65, 68, 98, 0.3);
+}
+.neu-dark-interactive:active, .neu-dark-active {
+  box-shadow: inset 2px 2px 6px rgba(18, 19, 30, 0.65),
+              inset -2px -2px 6px rgba(65, 68, 98, 0.2);
+}
+
+.neu-dark-inset {
+  background: #242537;
+  box-shadow: inset 2px 2px 6px rgba(18, 19, 30, 0.6),
+              inset -2px -2px 6px rgba(65, 68, 98, 0.18);
 }

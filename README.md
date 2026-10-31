@@ -24,16 +24,16 @@ ClarityX aims to make these information gaps visible through AI-assisted researc
 
 ## 🚦 Project Status
 
-- **Status:** Phase 1 Backend Foundation and Phase 2 Supabase Database Setup implemented; frontend foundation initialized; authentication and research APIs pending.
+- **Status:** Phase 1 Backend Foundation, Phase 2 Supabase Database Setup, Phase 3 Authentication & Research Session Persistence, and Phase 4 Checkpoint 1 Frontend Foundation & UI Design System implemented.
 - **Implemented:**
   - Complete architectural specifications, database schemas, and API documentation in `docs/`.
-  - Frontend foundation initialized (React + Vite + Tailwind CSS v4 + Base UI scaffold).
-  - FastAPI backend foundation (Phase 1): modular application structure, centralized settings, CORS middleware for `localhost:5173`, standardized JSON exception handling, `GET /` and `GET /health` endpoints, and automated pytest suite.
-  - Supabase Database Setup (Phase 2): centralized Supabase client with safe URL normalization, administrative client integration, pre-table live connectivity verification CLI (`python -m app.database.supabase`), initial schema migration (`001_initial_schema.sql` with 6 tables, cascade foreign keys, cross-session validation triggers, `auth.users` profile synchronization, 9 performance indexes, and comprehensive Row Level Security policies), database repository abstractions (`BaseRepository`, `ProfileRepository`, `ResearchRepository`), and automated database test suite.
+  - **FastAPI backend foundation (Phase 1):** Modular application structure, centralized settings, CORS middleware for `localhost:5173`, standardized JSON exception handling, `GET /` and `GET /health` endpoints, and automated pytest suite.
+  - **Supabase Database Setup (Phase 2):** Centralized Supabase client with safe URL normalization, administrative client integration, pre-table live connectivity verification CLI (`python -m app.database.supabase`), initial schema migration (`001_initial_schema.sql` with 6 tables, cascade foreign keys, cross-session validation triggers, `auth.users` profile synchronization, 9 performance indexes, and comprehensive Row Level Security policies), database repository abstractions (`BaseRepository`, `ProfileRepository`, `ResearchRepository`), and automated database test suite.
+  - **Authentication & Research Persistence (Phase 3):** Supabase Auth JWT token verification dependency (`get_current_user`), `GET /api/auth/me` user profile route, full authenticated CRUD for research sessions (`GET /api/research`, `POST /api/research`, `GET /api/research/{id}`, `PATCH /api/research/{id}`, `DELETE /api/research/{id}`), with 70 passing backend pytest tests.
+  - **Frontend Foundation & UI Design System (Phase 4, Checkpoint 1):** Modern React 19 + Vite frontend implementing the 5-color palette (`#2B2D42`, `#8D99AE`, `#EDF2F4`, `#EF233C`, `#D90429`), hybrid Glassmorphism (blur, frosted translucent panels) + Neumorphism (tactile extruded and inset soft-shadow surfaces), `react-router-dom` navigation across 5 responsive core views (Dashboard, New Research, Research History, Research Detail, Settings), API client services with live backend integration and graceful development preview fallbacks, zero ESLint errors, and clean production builds.
 - **Not Yet Implemented (Planned):**
-  - Supabase Authentication integration (Phase 3), JWT access token verification middleware, and protected route dependencies.
-  - Source extraction service (Trafilatura / Jina Reader) and optional DuckDuckGo search discovery.
-  - OpenRouter AI analysis engine, evidence quote verification, and research report persistence.
+  - Source extraction service (Trafilatura / Jina Reader) and optional DuckDuckGo search discovery (Phase 5).
+  - OpenRouter AI analysis engine, evidence quote verification, and research gap detection persistence (Phase 6).
 
 ## ✨ Key Features (Planned)
 
