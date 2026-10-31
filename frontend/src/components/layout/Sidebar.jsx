@@ -5,13 +5,15 @@ import {
   History,
   Settings,
   Sparkles,
-  ShieldCheck,
   X,
-  ExternalLink,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/context/useAuth'
 
 export function Sidebar({ onClose, isMobile = false }) {
+  const { profile, user, logout } = useAuth()
+
   const navItems = [
     {
       to: '/',
@@ -35,6 +37,22 @@ export function Sidebar({ onClose, isMobile = false }) {
       icon: Settings,
     },
   ]
+
+  const displayName =
+    profile?.full_name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split('@')[0] ||
+    'Research Analyst'
+
+  const displayEmail = profile?.email || user?.email || ''
+
+  const userInitials = displayName
+    .split(' ')
+    .map((n) => n[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'CX'
 
   return (
     <aside
@@ -73,10 +91,10 @@ export function Sidebar({ onClose, isMobile = false }) {
         )}
       </div>
 
-      {/* Philosophy Banner */}
-      <div className="mx-4 my-4 p-3 rounded-xl bg-[#232537]/80 border border-[#8D99AE]/20 shadow-inner">
-        <p className="text-[11px] leading-relaxed text-[#8D99AE]">
-          <span className="text-[#EDF2F4] font-medium">Core Principle:</span> Don't just show what was found. Highlight what remains missing.
+      {/* Philosophy banner */}
+      <div className="px-6 py-4 mx-3 my-3 rounded-xl bg-white/5 border border-white/5">
+        <p className="text-[11px] font-medium text-[#8D99AE] italic leading-relaxed">
+          &ldquo;Don&apos;t just tell users what you found. Tell them what you haven&apos;t found.&rdquo;
         </p>
       </div>
 
@@ -109,37 +127,33 @@ export function Sidebar({ onClose, isMobile = false }) {
         })}
       </nav>
 
-      {/* Bottom Profile / Service Status */}
-      <div className="p-4 border-t border-[#8D99AE]/15 space-y-3">
-        <div className="p-3 rounded-xl bg-[#232537]/90 border border-[#8D99AE]/20 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 rounded-lg bg-[#2B2D42] border border-[#8D99AE]/30 flex items-center justify-center text-xs font-bold text-white shadow-sm">
-              CX
+      {/* Bottom Profile / Account & Sign Out */}
+      <div className="p-4 border-t border-[#8D99AE]/15 space-y-2">
+        <div className="p-2.5 rounded-xl bg-[#232537]/90 border border-[#8D99AE]/20 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="size-8 rounded-lg bg-[#2B2D42] border border-[#8D99AE]/30 flex items-center justify-center text-xs font-bold text-white shrink-0">
+              {userInitials}
             </div>
             <div className="overflow-hidden">
-              <div className="text-xs font-semibold text-white truncate">
-                Research Studio
+              <div className="text-xs font-semibold text-white truncate" title={displayName}>
+                {displayName}
               </div>
-              <div className="text-[10px] text-[#8D99AE] flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-emerald-400"></span>
-                FastAPI Connected
+              <div className="text-[10px] text-[#8D99AE] truncate" title={displayEmail}>
+                {displayEmail || 'Authenticated'}
               </div>
             </div>
           </div>
-          <ShieldCheck className="size-4 text-emerald-400 shrink-0" />
-        </div>
 
-        <a
-          href="http://localhost:8000/docs"
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-center gap-1.5 w-full py-2 text-xs font-medium text-[#8D99AE] hover:text-white transition-colors"
-        >
-          <span>API Documentation</span>
-          <ExternalLink className="size-3" />
-        </a>
+          <button
+            onClick={() => logout()}
+            title="Sign Out"
+            className="p-1.5 rounded-lg text-[#8D99AE] hover:text-[#EF233C] hover:bg-white/10 transition-colors shrink-0"
+            aria-label="Sign out"
+          >
+            <LogOut className="size-4" />
+          </button>
+        </div>
       </div>
     </aside>
   )
 }
-

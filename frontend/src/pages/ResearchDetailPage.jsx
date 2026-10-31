@@ -7,9 +7,8 @@ import {
   Lock,
   Trash2,
   AlertCircle,
-  FileText,
-  Search,
   CheckCircle,
+  Layers,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
@@ -23,49 +22,60 @@ export function ResearchDetailPage() {
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
   const [activeTab, setActiveTab] = useState('summary')
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
+    let isCancelled = false
+
     async function fetchSession() {
-      setLoading(true)
-      setErrorMsg('')
       try {
+        setErrorMsg('')
         const response = await getResearchById(id)
+        if (isCancelled) return
+
         if (response?.data) {
           setSession(response.data)
+        } else {
+          setErrorMsg('Research session record was empty.')
         }
       } catch (err) {
-        // Fallback for visual development / demo sessions
-        setErrorMsg(err.message || 'Unable to retrieve research record from backend.')
-        setSession({
-          id,
-          research_goal: 'Autonomous driving regulatory standards and safety gaps across EU & US',
-          status: 'completed',
-          summary:
-            'Cross-source analysis completed across 4 source documents. Discovered significant discrepancy regarding LiDAR necessity between American and European homologation guidelines. 2 verification tasks require direct regulatory agency inquiries.',
-          created_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-          updated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          is_demo: true,
-        })
+        if (isCancelled) return
+        if (err.status === 404) {
+          setErrorMsg('The requested research session does not exist or you do not have permission to access it.')
+        } else if (err.status === 400) {
+          setErrorMsg('Invalid research session ID format.')
+        } else {
+          setErrorMsg(err.message || 'Unable to retrieve research record from backend.')
+        }
+        setSession(null)
       } finally {
-        setLoading(false)
+        if (!isCancelled) {
+          setLoading(false)
+        }
       }
     }
 
     if (id) {
       fetchSession()
     }
+
+    return () => {
+      isCancelled = true
+    }
   }, [id])
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this research session?')) {
+    if (!window.confirm('Are you sure you want to permanently delete this research session?')) {
       return
     }
 
+    setIsDeleting(true)
     try {
       await deleteResearch(id)
-      navigate('/history')
-    } catch {
-      navigate('/history')
+      navigate('/history', { replace: true })
+    } catch (err) {
+      alert(`Failed to delete research session: ${err.message}`)
+      setIsDeleting(false)
     }
   }
 
@@ -78,15 +88,29 @@ export function ResearchDetailPage() {
     )
   }
 
-  if (!session) {
+  if (errorMsg || !session) {
     return (
-      <div className="max-w-5xl mx-auto p-12 text-center space-y-4">
-        <h3 className="text-lg font-bold text-[#2B2D42]">Research session not found</h3>
-        <Link to="/history">
-          <NeuButton variant="default" size="sm" icon={ArrowLeft}>
-            Back to History
-          </NeuButton>
-        </Link>
+      <div className="max-w-2xl mx-auto p-8 space-y-6">
+        <GlassCard className="p-8 text-center space-y-4 border-l-4 border-l-[#EF233C]">
+          <div className="size-14 rounded-2xl bg-[#EF233C]/10 text-[#D90429] flex items-center justify-center mx-auto">
+            <AlertCircle className="size-7" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-[#2B2D42]">
+              Research Session Not Available
+            </h3>
+            <p className="text-xs text-[#8D99AE]">
+              {errorMsg || 'The requested research session could not be found.'}
+            </p>
+          </div>
+          <div className="pt-2">
+            <Link to="/history">
+              <NeuButton variant="default" size="sm" icon={ArrowLeft}>
+                Back to Research History
+              </NeuButton>
+            </Link>
+          </div>
+        </GlassCard>
       </div>
     )
   }
@@ -95,7 +119,10 @@ export function ResearchDetailPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Top Navigation & Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <Link to="/history" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8D99AE] hover:text-[#2B2D42]">
+        <Link
+          to="/history"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8D99AE] hover:text-[#2B2D42]"
+        >
           <ArrowLeft className="size-4" />
           Back to History
         </Link>
@@ -105,19 +132,13 @@ export function ResearchDetailPage() {
             variant="destructive"
             size="sm"
             onClick={handleDelete}
+            disabled={isDeleting}
             icon={Trash2}
           >
-            Delete Session
+            {isDeleting ? 'Deleting...' : 'Delete Session'}
           </NeuButton>
         </div>
       </div>
-
-      {errorMsg && (
-        <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2.5">
-          <AlertCircle className="size-4 text-amber-700 shrink-0" />
-          <span>Showing preview record: live backend queries require an authenticated session token.</span>
-        </div>
-      )}
 
       {/* Main Session Overview Header */}
       <GlassCard className="space-y-4 p-6 sm:p-8">
@@ -132,11 +153,11 @@ export function ResearchDetailPage() {
           <div className="flex items-center gap-3 text-xs text-[#8D99AE]">
             <span className="flex items-center gap-1">
               <Clock className="size-3.5 text-[#8D99AE]" />
-              Created: {new Date(session.created_at).toLocaleDateString()}
+              Created: {new Date(session.created_at).toLocaleString()}
             </span>
             {session.updated_at && (
               <span>
-                Updated: {new Date(session.updated_at).toLocaleDateString()}
+                Updated: {new Date(session.updated_at).toLocaleString()}
               </span>
             )}
           </div>
@@ -158,7 +179,8 @@ export function ResearchDetailPage() {
             Session Analytical Summary
           </div>
           <p className="text-sm text-[#2B2D42] leading-relaxed">
-            {session.summary || 'Analytical summary pending source ingestion and gap detection evaluation.'}
+            {session.summary ||
+              'Analytical summary pending source ingestion and AI gap detection evaluation.'}
           </p>
         </div>
       </GlassCard>
@@ -183,9 +205,9 @@ export function ResearchDetailPage() {
               : 'border-transparent text-[#8D99AE] hover:text-[#2B2D42]'
           }`}
         >
-          <span>Detected Gaps (Findings)</span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#8D99AE]/15 text-[#8D99AE]">
-            Coming Phase 6
+          Information Gaps
+          <span className="text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+            Phase VI
           </span>
         </button>
         <button
@@ -196,43 +218,48 @@ export function ResearchDetailPage() {
               : 'border-transparent text-[#8D99AE] hover:text-[#2B2D42]'
           }`}
         >
-          <span>Source Excerpts</span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#8D99AE]/15 text-[#8D99AE]">
-            Coming Phase 5
+          Source Material
+          <span className="text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+            Phase V
           </span>
         </button>
       </div>
 
       {/* Tab Panels */}
       {activeTab === 'summary' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <GlassCard className="space-y-3">
-            <h4 className="text-sm font-bold text-[#2B2D42] flex items-center gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <GlassCard className="p-5 space-y-3">
+            <h3 className="font-heading font-semibold text-sm text-[#2B2D42] flex items-center gap-2">
               <CheckCircle className="size-4 text-emerald-600" />
-              Database Persistence
-            </h4>
-            <p className="text-xs text-[#8D99AE] leading-relaxed">
-              This session is persisted in the Supabase PostgreSQL <code className="text-[#2B2D42]">research_sessions</code> table with strict ownership guarantees.
-            </p>
+              Database Record Lifecycle
+            </h3>
+            <div className="space-y-2 text-xs text-[#8D99AE]">
+              <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
+                <span>Current Status</span>
+                <span className="font-semibold text-[#2B2D42] uppercase">{session.status}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
+                <span>Session UUID</span>
+                <span className="font-mono text-[11px] text-[#2B2D42]">{session.id}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
+                <span>Owner User ID</span>
+                <span className="font-mono text-[11px] text-[#2B2D42]">{session.user_id}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span>Database Table</span>
+                <span className="font-mono text-[#2B2D42]">research_sessions</span>
+              </div>
+            </div>
           </GlassCard>
 
-          <GlassCard className="space-y-3">
-            <h4 className="text-sm font-bold text-[#2B2D42] flex items-center gap-2">
-              <Search className="size-4 text-[#D90429]" />
-              Gap Classification
-            </h4>
+          <GlassCard className="p-5 space-y-3">
+            <h3 className="font-heading font-semibold text-sm text-[#2B2D42] flex items-center gap-2">
+              <Layers className="size-4 text-[#D90429]" />
+              Analysis Pipeline Next Steps
+            </h3>
             <p className="text-xs text-[#8D99AE] leading-relaxed">
-              Findings will be strictly classified into: <strong className="text-[#2B2D42]">missing</strong>, <strong className="text-[#2B2D42]">outdated</strong>, <strong className="text-[#2B2D42]">conflicting</strong>, and <strong className="text-[#2B2D42]">unverified</strong>.
-            </p>
-          </GlassCard>
-
-          <GlassCard className="space-y-3">
-            <h4 className="text-sm font-bold text-[#2B2D42] flex items-center gap-2">
-              <FileText className="size-4 text-[#2B2D42]" />
-              Verification Integrity
-            </h4>
-            <p className="text-xs text-[#8D99AE] leading-relaxed">
-              Evidence references require exact quotation validation against extracted source text to eliminate hallucinations.
+              In Phase V, website extraction and document ingestion services will attach source text to this session. In Phase VI, the AI engine will parse that content to populate the 4 gap categories.
             </p>
           </GlassCard>
         </div>
@@ -240,15 +267,15 @@ export function ResearchDetailPage() {
 
       {activeTab === 'findings' && (
         <GlassCard className="p-8 text-center space-y-4">
-          <div className="size-12 rounded-2xl neu-inset mx-auto flex items-center justify-center text-[#D90429]">
-            <Lock className="size-6 text-[#D90429]" />
+          <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
+            <Lock className="size-6" />
           </div>
-          <div className="max-w-md mx-auto space-y-1.5">
-            <h4 className="text-base font-bold text-[#2B2D42]">
-              AI Gap Detection Engine (Phase 6)
-            </h4>
-            <p className="text-xs text-[#8D99AE] leading-relaxed">
-              The AI gap detection service will analyze source material using OpenRouter, generating structured findings with verified evidence excerpts and actionable checklist items.
+          <div className="max-w-md mx-auto space-y-1">
+            <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+              Gap Detection Engine Scheduled for Phase VI
+            </h3>
+            <p className="text-xs text-[#8D99AE]">
+              Categorized information gaps (Missing, Outdated, Conflicting, and Unverified) with evidence cross-references and verification task lists will be populated automatically when AI analysis runs in Phase VI.
             </p>
           </div>
         </GlassCard>
@@ -256,15 +283,15 @@ export function ResearchDetailPage() {
 
       {activeTab === 'sources' && (
         <GlassCard className="p-8 text-center space-y-4">
-          <div className="size-12 rounded-2xl neu-inset mx-auto flex items-center justify-center text-[#8D99AE]">
-            <Lock className="size-6 text-[#8D99AE]" />
+          <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
+            <Lock className="size-6" />
           </div>
-          <div className="max-w-md mx-auto space-y-1.5">
-            <h4 className="text-base font-bold text-[#2B2D42]">
-              Source Extraction Engine (Phase 5)
-            </h4>
-            <p className="text-xs text-[#8D99AE] leading-relaxed">
-              Web crawling with Trafilatura and Jina Reader fallback will extract raw text content into the <code className="text-[#2B2D42]">sources</code> table.
+          <div className="max-w-md mx-auto space-y-1">
+            <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+              Source Ingestion Pipeline Scheduled for Phase V
+            </h3>
+            <p className="text-xs text-[#8D99AE]">
+              Multi-source extraction engine using Trafilatura and Jina Reader (with SSRF protection and DuckDuckGo discovery) will be integrated in Phase V.
             </p>
           </div>
         </GlassCard>

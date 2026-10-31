@@ -8,8 +8,9 @@ import {
   CheckCircle2,
   Clock,
   Layers,
-  Search,
-  AlertTriangle,
+  AlertCircle,
+  RefreshCw,
+  Plus,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
@@ -18,57 +19,58 @@ import { getResearchSessions } from '@/services/researchService'
 
 export function DashboardPage() {
   const [sessions, setSessions] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [isLiveBackend, setIsLiveBackend] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
+    let isCancelled = false
+
     async function loadData() {
       try {
+        setErrorMsg('')
         const response = await getResearchSessions({ limit: 5 })
+        if (isCancelled) return
+
         if (response?.data?.research_sessions) {
           setSessions(response.data.research_sessions)
-          setIsLiveBackend(true)
+          setTotalCount(response.data.total ?? response.data.research_sessions.length)
+        } else {
+          setSessions([])
+          setTotalCount(0)
         }
-      } catch {
-        // Fallback to sample visual development data if backend has no active session yet
-        setIsLiveBackend(false)
-        setSessions([
-          {
-            id: 'sample-1',
-            research_goal: 'Autonomous driving regulatory standards and safety gaps across EU & US',
-            status: 'completed',
-            summary: 'Analysis completed. Identified 3 conflicting statements on sensor redundancy and 2 unverified claims.',
-            created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-            is_sample: true,
-          },
-          {
-            id: 'sample-2',
-            research_goal: 'Quantum dot solar cell efficiency reports and commercial longevity claims',
-            status: 'processing',
-            summary: 'Extracting source specifications and validating experimental benchmarks.',
-            created_at: new Date(Date.now() - 3600000 * 8).toISOString(),
-            is_sample: true,
-          },
-          {
-            id: 'sample-3',
-            research_goal: 'Semiconductor supply chain geographic bottlenecks for advanced nodes (sub-3nm)',
-            status: 'pending',
-            summary: 'Awaiting source ingestion and cross-reference verification.',
-            created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-            is_sample: true,
-          },
-        ])
+      } catch (err) {
+        if (isCancelled) return
+        setErrorMsg(err.message || 'Failed to retrieve research sessions from the backend.')
+        setSessions([])
+        setTotalCount(0)
       } finally {
-        setLoading(false)
+        if (!isCancelled) {
+          setLoading(false)
+        }
       }
     }
 
     loadData()
-  }, [])
+
+    return () => {
+      isCancelled = true
+    }
+  }, [refreshKey])
+
+  const handleRetry = () => {
+    setLoading(true)
+    setRefreshKey((prev) => prev + 1)
+  }
+
+  const completedCount = sessions.filter((s) => s.status === 'completed').length
+  const processingCount = sessions.filter((s) => s.status === 'processing').length
+  const pendingCount = sessions.filter((s) => s.status === 'pending').length
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
-      {/* Hero / Welcome Banner combining Glassmorphism + Neumorphism */}
+      {/* Hero / Welcome Banner */}
       <div className="relative overflow-hidden rounded-3xl p-6 sm:p-10 neu-raised border border-white/60">
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-gradient-to-br from-[#EF233C]/10 via-[#D90429]/5 to-transparent rounded-full blur-3xl pointer-events-none" />
 
@@ -79,9 +81,9 @@ export function DashboardPage() {
           </div>
 
           <h2 className="text-2xl sm:text-4xl font-extrabold text-[#2B2D42] tracking-tight leading-tight">
-            Don't just discover what exists.
+            Don&apos;t just discover what exists.
             <br />
-            <span className="text-[#D90429]">Expose what's missing.</span>
+            <span className="text-[#D90429]">Expose what&apos;s missing.</span>
           </h2>
 
           <p className="text-sm sm:text-base text-[#8D99AE] leading-relaxed">
@@ -103,66 +105,66 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <GlassCard className="flex items-center gap-4">
-          <div className="size-12 rounded-2xl neu-inset flex items-center justify-center text-[#2B2D42]">
-            <Layers className="size-6 text-[#2B2D42]" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-[#2B2D42]">
-              {sessions.length}
-            </div>
-            <div className="text-xs font-medium text-[#8D99AE]">
-              Research Sessions
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <GlassCard className="p-5 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#8D99AE] uppercase tracking-wider">
+              Total Sessions
+            </span>
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#2B2D42]">
+              {loading ? '—' : totalCount}
             </div>
           </div>
-        </GlassCard>
-
-        <GlassCard className="flex items-center gap-4">
-          <div className="size-12 rounded-2xl neu-inset flex items-center justify-center text-emerald-600">
-            <CheckCircle2 className="size-6 text-emerald-600" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-[#2B2D42]">
-              {sessions.filter((s) => s.status === 'completed').length}
-            </div>
-            <div className="text-xs font-medium text-[#8D99AE]">
-              Verified Reports
-            </div>
+          <div className="size-11 rounded-2xl bg-[#2B2D42] flex items-center justify-center text-white neu-dark-raised">
+            <Layers className="size-5 text-[#EDF2F4]" />
           </div>
         </GlassCard>
 
-        <GlassCard className="flex items-center gap-4">
-          <div className="size-12 rounded-2xl neu-inset flex items-center justify-center text-amber-600">
-            <Clock className="size-6 text-amber-600" />
+        <GlassCard className="p-5 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#8D99AE] uppercase tracking-wider">
+              Completed
+            </span>
+            <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">
+              {loading ? '—' : completedCount}
+            </div>
           </div>
-          <div>
-            <div className="text-2xl font-bold text-[#2B2D42]">
-              {sessions.filter((s) => s.status === 'pending' || s.status === 'processing').length}
-            </div>
-            <div className="text-xs font-medium text-[#8D99AE]">
-              In Progress
-            </div>
+          <div className="size-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 border border-emerald-500/20">
+            <CheckCircle2 className="size-5" />
           </div>
         </GlassCard>
 
-        <GlassCard className="flex items-center gap-4">
-          <div className="size-12 rounded-2xl neu-inset flex items-center justify-center text-[#D90429]">
-            <AlertTriangle className="size-6 text-[#D90429]" />
+        <GlassCard className="p-5 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#8D99AE] uppercase tracking-wider">
+              Processing
+            </span>
+            <div className="text-2xl sm:text-3xl font-extrabold text-amber-600">
+              {loading ? '—' : processingCount}
+            </div>
           </div>
-          <div>
-            <div className="text-2xl font-bold text-[#D90429]">
-              4 Categories
+          <div className="size-11 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600 border border-amber-500/20">
+            <Clock className="size-5" />
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-5 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#8D99AE] uppercase tracking-wider">
+              Pending
+            </span>
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#8D99AE]">
+              {loading ? '—' : pendingCount}
             </div>
-            <div className="text-xs font-medium text-[#8D99AE]">
-              Gap Classifications
-            </div>
+          </div>
+          <div className="size-11 rounded-2xl bg-[#8D99AE]/15 flex items-center justify-center text-[#2B2D42]">
+            <Clock className="size-5" />
           </div>
         </GlassCard>
       </div>
 
-      {/* Recent Investigations */}
+      {/* Recent Investigations Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -170,78 +172,117 @@ export function DashboardPage() {
               Recent Investigations
             </h3>
             <p className="text-xs text-[#8D99AE]">
-              {isLiveBackend ? 'Connected to live database records' : 'Visual development preview (live database synced on session creation)'}
+              Latest research sessions from your database
             </p>
           </div>
-          <Link
-            to="/history"
-            className="text-xs font-semibold text-[#D90429] hover:underline flex items-center gap-1"
-          >
-            All Sessions <ArrowRight className="size-3.5" />
-          </Link>
-        </div>
 
-        {loading ? (
-          <div className="p-8 rounded-2xl neu-raised text-center text-sm text-[#8D99AE]">
-            Loading research investigations...
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="p-10 rounded-2xl neu-raised text-center space-y-4">
-            <div className="size-12 rounded-2xl neu-inset mx-auto flex items-center justify-center text-[#8D99AE]">
-              <Search className="size-6" />
-            </div>
-            <div>
-              <h4 className="text-base font-bold text-[#2B2D42]">No research sessions yet</h4>
-              <p className="text-xs text-[#8D99AE] max-w-sm mx-auto mt-1">
-                Start your first investigation to detect missing information, conflicting claims, and verification checklists.
-              </p>
-            </div>
-            <Link to="/new">
-              <NeuButton variant="cta" size="sm" icon={Compass}>
-                Create Research Session
+          <div className="flex items-center gap-2">
+            <NeuButton
+              variant="ghost"
+              size="sm"
+              onClick={handleRetry}
+              disabled={loading}
+              icon={RefreshCw}
+            >
+              Refresh
+            </NeuButton>
+            <Link to="/history">
+              <NeuButton variant="default" size="sm" icon={ArrowRight}>
+                View All
               </NeuButton>
             </Link>
           </div>
-        ) : (
+        </div>
+
+        {/* Error State */}
+        {errorMsg && (
+          <GlassCard className="p-6 border-l-4 border-l-[#EF233C]">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="size-5 text-[#EF233C] shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-sm text-[#2B2D42]">
+                    Unable to load research sessions
+                  </h4>
+                  <p className="text-xs text-[#8D99AE] mt-1">{errorMsg}</p>
+                </div>
+              </div>
+              <NeuButton variant="secondary" size="sm" onClick={handleRetry}>
+                Retry
+              </NeuButton>
+            </div>
+          </GlassCard>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <GlassCard className="p-8 text-center space-y-3">
+            <div className="size-8 rounded-full border-2 border-[#EF233C] border-t-transparent animate-spin mx-auto" />
+            <p className="text-xs font-medium text-[#8D99AE]">
+              Loading research sessions from database...
+            </p>
+          </GlassCard>
+        )}
+
+        {/* Empty State */}
+        {!loading && !errorMsg && sessions.length === 0 && (
+          <GlassCard className="p-12 text-center space-y-4">
+            <div className="size-16 rounded-2xl bg-[#8D99AE]/10 text-[#8D99AE] flex items-center justify-center mx-auto border border-[#8D99AE]/20">
+              <Layers className="size-8" />
+            </div>
+            <div className="max-w-md mx-auto space-y-1">
+              <h4 className="font-heading font-bold text-base text-[#2B2D42]">
+                No research sessions yet
+              </h4>
+              <p className="text-xs text-[#8D99AE]">
+                You haven&apos;t started any research investigations yet. Formulate a research question to detect information gaps.
+              </p>
+            </div>
+            <div className="pt-2">
+              <Link to="/new">
+                <NeuButton variant="cta" size="default" icon={Plus}>
+                  Create First Investigation
+                </NeuButton>
+              </Link>
+            </div>
+          </GlassCard>
+        )}
+
+        {/* Sessions List */}
+        {!loading && !errorMsg && sessions.length > 0 && (
           <div className="space-y-3">
             {sessions.map((session) => (
               <GlassCard
                 key={session.id}
-                hover={true}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5"
+                className="p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
               >
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={session.status} />
-                    {session.is_sample && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#8D99AE]/15 text-[#8D99AE]">
-                        Sample Preview
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1.5 max-w-3xl">
+                    <div className="flex items-center gap-2.5">
+                      <StatusBadge status={session.status} />
+                      <span className="text-[11px] text-[#8D99AE] font-mono">
+                        {new Date(session.created_at).toLocaleString()}
                       </span>
-                    )}
-                    <span className="text-xs text-[#8D99AE]">
-                      {new Date(session.created_at).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </span>
-                  </div>
-                  <h4 className="text-sm sm:text-base font-bold text-[#2B2D42] truncate">
-                    {session.research_goal}
-                  </h4>
-                  {session.summary && (
-                    <p className="text-xs text-[#8D99AE] line-clamp-1">
-                      {session.summary}
-                    </p>
-                  )}
-                </div>
+                    </div>
 
-                <div className="shrink-0 flex items-center gap-2">
-                  <Link to={`/research/${session.id}`}>
-                    <NeuButton variant="default" size="sm">
-                      Inspect Report
-                    </NeuButton>
-                  </Link>
+                    <h4 className="font-heading font-semibold text-base text-[#2B2D42] line-clamp-2">
+                      {session.research_goal}
+                    </h4>
+
+                    {session.summary && (
+                      <p className="text-xs text-[#8D99AE] line-clamp-2">
+                        {session.summary}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <Link to={`/research/${session.id}`}>
+                      <NeuButton variant="secondary" size="sm" icon={ArrowRight}>
+                        Open Details
+                      </NeuButton>
+                    </Link>
+                  </div>
                 </div>
               </GlassCard>
             ))}
@@ -251,4 +292,3 @@ export function DashboardPage() {
     </div>
   )
 }
-

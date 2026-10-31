@@ -8,6 +8,7 @@ import {
   ExternalLink,
   AlertCircle,
   Search,
+  Clock,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
@@ -34,6 +35,7 @@ export function ResearchHistoryPage() {
 
     async function fetchHistory() {
       try {
+        setErrorMsg('')
         const filter = statusFilter === 'all' ? null : statusFilter
         const response = await getResearchSessions({ limit: 50, status: filter })
         if (isCancelled) return
@@ -45,35 +47,8 @@ export function ResearchHistoryPage() {
         }
       } catch (err) {
         if (isCancelled) return
-        // If unauthenticated or backend error
         setErrorMsg(err.message || 'Unable to fetch research history from backend.')
-        // Provide local sample items for visual review
-        setSessions([
-          {
-            id: 'demo-session-01',
-            research_goal: 'Autonomous driving regulatory standards and safety gaps across EU & US',
-            status: 'completed',
-            summary: 'Identified 3 conflicting statements and 2 unverified claims.',
-            created_at: new Date(Date.now() - 3600000 * 3).toISOString(),
-            is_demo: true,
-          },
-          {
-            id: 'demo-session-02',
-            research_goal: 'Quantum dot solar cell efficiency reports and commercial longevity claims',
-            status: 'processing',
-            summary: 'In progress: cross-verifying benchmark data against peer-reviewed journals.',
-            created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
-            is_demo: true,
-          },
-          {
-            id: 'demo-session-03',
-            research_goal: 'Semiconductor supply chain geographic bottlenecks for advanced sub-3nm nodes',
-            status: 'pending',
-            summary: '',
-            created_at: new Date(Date.now() - 3600000 * 36).toISOString(),
-            is_demo: true,
-          },
-        ])
+        setSessions([])
       } finally {
         if (!isCancelled) {
           setLoading(false)
@@ -90,7 +65,8 @@ export function ResearchHistoryPage() {
 
   const handleDelete = async (id, e) => {
     e.preventDefault()
-    if (!window.confirm('Are you sure you want to delete this research session?')) {
+    e.stopPropagation()
+    if (!window.confirm('Are you sure you want to permanently delete this research session?')) {
       return
     }
 
@@ -98,19 +74,19 @@ export function ResearchHistoryPage() {
     try {
       await deleteResearch(id)
       setSessions((prev) => prev.filter((s) => s.id !== id))
-    } catch {
-      // If demo or failed, remove locally
-      setSessions((prev) => prev.filter((s) => s.id !== id))
+    } catch (err) {
+      alert(`Failed to delete session: ${err.message}`)
     } finally {
       setIsDeleting(null)
     }
   }
 
   const filteredSessions = sessions.filter((s) => {
-    if (searchQuery.trim()) {
-      return s.research_goal.toLowerCase().includes(searchQuery.toLowerCase())
-    }
-    return true
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return true
+    const goalMatch = s.research_goal?.toLowerCase().includes(query)
+    const summaryMatch = s.summary?.toLowerCase().includes(query)
+    return goalMatch || summaryMatch
   })
 
   return (
@@ -122,7 +98,7 @@ export function ResearchHistoryPage() {
             Research Investigation History
           </h2>
           <p className="text-sm text-[#8D99AE]">
-            Browse and inspect prior research reports and gap analyses.
+            Browse, inspect, and manage your stored research reports.
           </p>
         </div>
 
@@ -144,129 +120,156 @@ export function ResearchHistoryPage() {
         </div>
       </div>
 
-      {errorMsg && (
-        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-sm flex items-start gap-3">
-          <AlertCircle className="size-5 shrink-0 text-amber-700 mt-0.5" />
-          <div className="flex-1">
-            <strong>Backend Connection Notice:</strong> {errorMsg}
-            <span className="block text-xs text-amber-700 mt-0.5">
-              Displaying local preview items. Once an active Supabase user session token is saved in Settings, queries will read directly from live database.
-            </span>
+      {/* Filter & Search Bar */}
+      <GlassCard className="p-4 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Search Box */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-[#8D99AE] pointer-events-none" />
+            <NeuInput
+              type="text"
+              placeholder="Search by topic, keyword, or hypothesis..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 text-sm"
+            />
+          </div>
+
+          {/* Status Filter Buttons */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+            {['all', 'completed', 'processing', 'pending', 'failed'].map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(st)
+                  setLoading(true)
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all ${
+                  statusFilter === st
+                    ? 'neu-btn-cta shadow-sm'
+                    : 'neu-interactive text-[#8D99AE] hover:text-[#2B2D42]'
+                }`}
+              >
+                {st}
+              </button>
+            ))}
           </div>
         </div>
+      </GlassCard>
+
+      {/* Error State */}
+      {errorMsg && (
+        <GlassCard className="p-6 border-l-4 border-l-[#EF233C]">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="size-5 text-[#EF233C] shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-sm text-[#2B2D42]">
+                  Error loading history
+                </h4>
+                <p className="text-xs text-[#8D99AE] mt-1">{errorMsg}</p>
+              </div>
+            </div>
+            <NeuButton variant="secondary" size="sm" onClick={handleRefresh}>
+              Retry
+            </NeuButton>
+          </div>
+        </GlassCard>
       )}
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        {/* Status Filter Tabs */}
-        <div className="inline-flex p-1 rounded-2xl neu-inset gap-1">
-          {['all', 'completed', 'processing', 'pending', 'failed'].map((st) => (
-            <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all cursor-pointer ${
-                statusFilter === st
-                  ? 'bg-gradient-to-r from-[#D90429] to-[#EF233C] text-white shadow-xs'
-                  : 'text-[#8D99AE] hover:text-[#2B2D42]'
-              }`}
-            >
-              {st}
-            </button>
-          ))}
-        </div>
+      {/* Loading State */}
+      {loading && (
+        <GlassCard className="p-12 text-center space-y-3">
+          <div className="size-8 rounded-full border-2 border-[#EF233C] border-t-transparent animate-spin mx-auto" />
+          <p className="text-xs font-medium text-[#8D99AE]">
+            Fetching investigations from database...
+          </p>
+        </GlassCard>
+      )}
 
-        {/* Search Input */}
-        <div className="w-full sm:w-72">
-          <NeuInput
-            placeholder="Search by research goal..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            icon={Search}
-          />
-        </div>
-      </div>
-
-      {/* Session List */}
-      {loading ? (
-        <div className="p-12 rounded-3xl neu-raised text-center text-[#8D99AE] space-y-3">
-          <RefreshCw className="size-6 animate-spin mx-auto text-[#D90429]" />
-          <p className="text-sm font-medium">Fetching research records from database...</p>
-        </div>
-      ) : filteredSessions.length === 0 ? (
-        <div className="p-12 rounded-3xl neu-raised text-center space-y-4">
-          <div className="size-14 rounded-2xl neu-inset mx-auto flex items-center justify-center text-[#8D99AE]">
-            <FileSearch className="size-7" />
+      {/* Empty State */}
+      {!loading && !errorMsg && filteredSessions.length === 0 && (
+        <GlassCard className="p-12 text-center space-y-4">
+          <div className="size-16 rounded-2xl bg-[#8D99AE]/10 text-[#8D99AE] flex items-center justify-center mx-auto border border-[#8D99AE]/20">
+            <FileSearch className="size-8" />
           </div>
-          <div>
-            <h3 className="text-lg font-bold text-[#2B2D42]">
-              No research sessions found
-            </h3>
-            <p className="text-xs text-[#8D99AE] max-w-sm mx-auto mt-1">
+          <div className="max-w-md mx-auto space-y-1">
+            <h3 className="font-heading font-bold text-base text-[#2B2D42]">
               {searchQuery || statusFilter !== 'all'
-                ? 'No sessions match your current search or status filter.'
-                : 'You have not initialized any research investigations yet.'}
+                ? 'No matching investigations found'
+                : 'No research sessions yet'}
+            </h3>
+            <p className="text-xs text-[#8D99AE]">
+              {searchQuery || statusFilter !== 'all'
+                ? 'Try broadening your search criteria or resetting the status filter.'
+                : 'Formulate your first research question to detect dark spots.'}
             </p>
           </div>
-          <Link to="/new">
-            <NeuButton variant="cta" size="sm" icon={Plus}>
-              Create First Investigation
-            </NeuButton>
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-3.5">
+          <div className="pt-2">
+            <Link to="/new">
+              <NeuButton variant="cta" size="default" icon={Plus}>
+                Create New Research Session
+              </NeuButton>
+            </Link>
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Sessions Grid / Table */}
+      {!loading && !errorMsg && filteredSessions.length > 0 && (
+        <div className="space-y-3">
           {filteredSessions.map((session) => (
             <GlassCard
               key={session.id}
-              hover={true}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5"
+              className="p-5 transition-all duration-200 hover:shadow-md"
             >
-              <div className="space-y-2 flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={session.status} />
-                  {session.is_demo && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#8D99AE]/15 text-[#8D99AE]">
-                      Demo Preview
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-2 flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <StatusBadge status={session.status} />
+                    <span className="text-[11px] text-[#8D99AE] font-mono flex items-center gap-1">
+                      <Clock className="size-3" />
+                      {new Date(session.created_at).toLocaleString()}
                     </span>
+                    <span className="text-[10px] text-[#8D99AE] font-mono px-2 py-0.5 rounded bg-white/60">
+                      ID: {session.id.slice(0, 8)}...
+                    </span>
+                  </div>
+
+                  <h3 className="font-heading font-semibold text-base text-[#2B2D42] line-clamp-2">
+                    {session.research_goal}
+                  </h3>
+
+                  {session.summary ? (
+                    <p className="text-xs text-[#8D99AE] line-clamp-2">
+                      {session.summary}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[#8D99AE] italic">
+                      No summary available yet.
+                    </p>
                   )}
-                  <span className="text-xs text-[#8D99AE]">
-                    Created on{' '}
-                    {new Date(session.created_at).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
                 </div>
 
-                <h3 className="text-base font-bold text-[#2B2D42] truncate">
-                  {session.research_goal}
-                </h3>
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <Link to={`/research/${session.id}`}>
+                    <NeuButton variant="secondary" size="sm" icon={ExternalLink}>
+                      Details
+                    </NeuButton>
+                  </Link>
 
-                {session.summary && (
-                  <p className="text-xs text-[#8D99AE] line-clamp-2">
-                    {session.summary}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
-                <Link to={`/research/${session.id}`}>
-                  <NeuButton variant="default" size="sm" icon={ExternalLink}>
-                    View Report
+                  <NeuButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => handleDelete(session.id, e)}
+                    disabled={isDeleting === session.id}
+                    title="Delete research session"
+                    className="text-[#8D99AE] hover:text-[#D90429]"
+                  >
+                    <Trash2 className="size-4" />
                   </NeuButton>
-                </Link>
-
-                <NeuButton
-                  variant="destructive"
-                  size="sm"
-                  onClick={(e) => handleDelete(session.id, e)}
-                  disabled={isDeleting === session.id}
-                  icon={Trash2}
-                  aria-label="Delete research session"
-                />
+                </div>
               </div>
             </GlassCard>
           ))}

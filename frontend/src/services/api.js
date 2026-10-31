@@ -2,27 +2,37 @@
  * ClarityX Centralized API Client
  *
  * Configurable base URL via Vite environment variable VITE_API_BASE_URL.
- * Standardizes request headers, bearer token injection, and error formatting.
+ * Standardizes request headers, automatic Supabase Bearer token injection,
+ * consistent error extraction, and network error handling.
  */
+
+import { supabase } from '@/lib/supabase'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export const getApiBaseUrl = () => BASE_URL
 
-export const getAuthToken = () => {
-  return localStorage.getItem('clarityx_access_token') || ''
-}
-
-export const setAuthToken = (token) => {
-  if (token) {
-    localStorage.setItem('clarityx_access_token', token)
-  } else {
-    localStorage.removeItem('clarityx_access_token')
+/**
+ * Retrieves the active access token directly from the Supabase session.
+ * Guaranteed to return the latest, refreshed token without hardcoding or manual storage.
+ *
+ * @returns {Promise<string>}
+ */
+export async function getAuthToken() {
+  try {
+    const { data, error } = await supabase.auth.getSession()
+    if (error || !data?.session) {
+      return ''
+    }
+    return data.session.access_token || ''
+  } catch {
+    return ''
   }
 }
 
 /**
  * Universal fetch wrapper for ClarityX Backend API.
+ * Automatically injects the latest Supabase Bearer token for protected requests.
  *
  * @param {string} endpoint - Path such as '/api/research'
  * @param {RequestInit} [options] - Fetch configuration options
@@ -30,7 +40,8 @@ export const setAuthToken = (token) => {
  */
 export async function apiFetch(endpoint, options = {}) {
   const url = `${BASE_URL.replace(/\/+$/, '')}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
-  const token = getAuthToken()
+
+  const token = await getAuthToken()
 
   const headers = {
     'Content-Type': 'application/json',
@@ -42,30 +53,50 @@ export async function apiFetch(endpoint, options = {}) {
     headers.Authorization = `Bearer ${token}`
   }
 
+  let response
   try {
-    const response = await fetch(url, {
+    response = await fetch(url, {
       ...options,
       headers,
     })
+  } catch (err) {
+    const networkError = new Error(
+      'Unable to connect to ClarityX backend server. Please verify the backend is running on port 8000.'
+    )
+    networkError.status = 0
+    networkError.originalError = err
+    throw networkError
+  }
 
-    const data = await response.json().catch(() => null)
+  let data = null
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => null)
+  }
 
-    if (!response.ok) {
-      const errorMsg = data?.message || data?.detail || `Request failed with status ${response.status}`
-      const error = new Error(errorMsg)
-      error.status = response.status
-      error.data = data
-      throw error
+  if (!response.ok) {
+    let errorMsg
+    if (data?.message) {
+      errorMsg = data.message
+    } else if (typeof data?.detail === 'string') {
+      errorMsg = data.detail
+    } else if (Array.isArray(data?.detail) && data.detail[0]?.msg) {
+      errorMsg = data.detail.map((d) => d.msg).join(', ')
+    } else {
+      errorMsg = `Request failed with status ${response.status}`
     }
 
-    return data
-  } catch (error) {
-    // Distinguish network failures from server responses
-    if (!error.status) {
-      error.status = 0
-      error.message = error.message || 'Unable to connect to the backend server. Please verify your connection.'
+    const error = new Error(errorMsg)
+    error.status = response.status
+    error.data = data
+
+    // Notify auth context if access token was rejected
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('clarityx:unauthorized'))
     }
+
     throw error
   }
-}
 
+  return data
+}

@@ -1,50 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   User,
   Palette,
   Server,
-  ShieldCheck,
-  CheckCircle2,
   Info,
   ExternalLink,
   Sparkles,
+  LogOut,
+  RefreshCw,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
 import { NeuInput } from '@/components/common/NeuInput'
-import { getCurrentUser } from '@/services/authService'
+import { useAuth } from '@/context/useAuth'
 
 export function SettingsPage() {
-  const [userProfile, setUserProfile] = useState(null)
-  const [loadingUser, setLoadingUser] = useState(true)
-  const [apiStatus, setApiStatus] = useState('checking')
+  const { user, profile, logout, refreshProfile, profileLoading } = useAuth()
+  const [copied, setCopied] = useState(false)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-
-  useEffect(() => {
-    async function fetchUser() {
-      setLoadingUser(true)
-      try {
-        const response = await getCurrentUser()
-        if (response?.data) {
-          setUserProfile(response.data)
-          setApiStatus('connected')
-        } else {
-          setApiStatus('unauthenticated')
-        }
-      } catch {
-        setApiStatus('unauthenticated')
-        setUserProfile({
-          id: 'dev-user-demo-id',
-          email: 'researcher@clarityx.ai',
-          full_name: 'Lead Research Analyst',
-          is_demo: true,
-        })
-      } finally {
-        setLoadingUser(false)
-      }
-    }
-    fetchUser()
-  }, [])
 
   const colorPalette = [
     {
@@ -85,6 +60,18 @@ export function SettingsPage() {
     },
   ]
 
+  const userId = profile?.id || user?.id || ''
+  const fullName = profile?.full_name || user?.user_metadata?.full_name || ''
+  const email = profile?.email || user?.email || ''
+
+  const handleCopyId = () => {
+    if (userId) {
+      navigator.clipboard.writeText(userId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12">
       {/* Page Header */}
@@ -93,7 +80,7 @@ export function SettingsPage() {
           Platform Settings
         </h1>
         <p className="text-sm text-[#8D99AE] mt-1">
-          Review authentication status, the UI design system tokens, and backend configuration.
+          Review authenticated account details, the UI design system tokens, and backend configuration.
         </p>
       </div>
 
@@ -112,23 +99,30 @@ export function SettingsPage() {
                     User Account
                   </h2>
                   <p className="text-xs text-[#8D99AE]">
-                    Supabase Authentication & Profile Link
+                    Authenticated Supabase Session & Profile
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {apiStatus === 'connected' ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                    <CheckCircle2 className="size-3.5" />
-                    Supabase Verified
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-[#8D99AE]/15 text-[#2B2D42] border border-[#8D99AE]/30">
-                    <Info className="size-3.5 text-[#8D99AE]" />
-                    Development Session
-                  </span>
-                )}
+                <NeuButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={refreshProfile}
+                  disabled={profileLoading}
+                  icon={RefreshCw}
+                  title="Reload profile from backend"
+                >
+                  Sync
+                </NeuButton>
+                <NeuButton
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => logout()}
+                  icon={LogOut}
+                >
+                  Sign Out
+                </NeuButton>
               </div>
             </div>
 
@@ -141,7 +135,7 @@ export function SettingsPage() {
                   <NeuInput
                     type="text"
                     readOnly
-                    value={loadingUser ? 'Loading...' : userProfile?.full_name || 'Anonymous User'}
+                    value={fullName || 'Not specified'}
                     className="text-sm font-medium text-[#2B2D42]"
                   />
                 </div>
@@ -152,7 +146,7 @@ export function SettingsPage() {
                   <NeuInput
                     type="email"
                     readOnly
-                    value={loadingUser ? 'Loading...' : userProfile?.email || 'N/A'}
+                    value={email || 'Not available'}
                     className="text-sm font-medium text-[#2B2D42]"
                   />
                 </div>
@@ -166,32 +160,24 @@ export function SettingsPage() {
                   <NeuInput
                     type="text"
                     readOnly
-                    value={userProfile?.id || '—'}
-                    className="text-xs font-mono text-[#8D99AE]"
+                    value={userId || '—'}
+                    className="text-xs font-mono text-[#2B2D42]"
                   />
                   <NeuButton
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      if (userProfile?.id) {
-                        navigator.clipboard.writeText(userProfile.id)
-                      }
-                    }}
+                    onClick={handleCopyId}
                     title="Copy User ID"
+                    icon={copied ? Check : Copy}
                   >
-                    Copy
+                    {copied ? 'Copied' : 'Copy'}
                   </NeuButton>
                 </div>
               </div>
 
-              {userProfile?.is_demo && (
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5 text-xs text-[#2B2D42]">
-                  <Info className="size-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-amber-700">Client Preview Mode:</span>{' '}
-                    No Supabase JWT Bearer token was detected in the active browser session. To authenticate live, store your token in{' '}
-                    <code className="px-1 py-0.5 rounded bg-white/70 font-mono text-[11px]">localStorage.setItem('auth_token', token)</code>.
-                  </div>
+              {profile?.created_at && (
+                <div className="text-[11px] text-[#8D99AE]">
+                  Member since: {new Date(profile.created_at).toLocaleString()}
                 </div>
               )}
             </div>
@@ -287,7 +273,7 @@ export function SettingsPage() {
             <div className="mt-5 space-y-4">
               <div>
                 <span className="block text-[11px] font-semibold text-[#8D99AE] uppercase tracking-wider mb-1">
-                  Endpoint URL
+                  API Base URL
                 </span>
                 <div className="px-3 py-2 rounded-xl neu-inset text-xs font-mono text-[#2B2D42] break-all">
                   {apiBaseUrl}
@@ -296,11 +282,10 @@ export function SettingsPage() {
 
               <div>
                 <span className="block text-[11px] font-semibold text-[#8D99AE] uppercase tracking-wider mb-1">
-                  API Status
+                  Authentication Method
                 </span>
-                <div className="flex items-center gap-2 text-xs font-medium text-[#2B2D42]">
-                  <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                  HTTP 200 /api/health Ready
+                <div className="text-xs font-medium text-[#2B2D42]">
+                  Supabase Auth JWT (Bearer Header)
                 </div>
               </div>
 
@@ -320,38 +305,24 @@ export function SettingsPage() {
             </div>
           </GlassCard>
 
-          {/* Security & RLS Card */}
-          <GlassCard className="p-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-[#8D99AE]/15">
-              <div className="size-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
-                <ShieldCheck className="size-5" />
+          {/* Session Overview Card */}
+          <GlassCard className="p-6 space-y-3">
+            <h3 className="font-heading font-semibold text-base text-[#2B2D42] flex items-center gap-2">
+              <Info className="size-4 text-[#8D99AE]" />
+              Session Information
+            </h3>
+            <div className="space-y-2 text-xs text-[#8D99AE]">
+              <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
+                <span>Auth Provider</span>
+                <span className="font-semibold text-[#2B2D42]">Supabase Auth</span>
               </div>
-              <div>
-                <h3 className="font-heading font-semibold text-base text-[#2B2D42]">
-                  Security Architecture
-                </h3>
-                <p className="text-xs text-[#8D99AE]">Supabase RLS & Auth</p>
+              <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
+                <span>Persistence</span>
+                <span className="font-semibold text-[#2B2D42]">PostgreSQL (RLS)</span>
               </div>
-            </div>
-
-            <div className="mt-4 space-y-3 text-xs text-[#8D99AE]">
-              <div className="flex items-start gap-2">
-                <CheckCircle2 className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-[#2B2D42]">Row Level Security:</strong> Research sessions are strictly isolated by <code className="text-[#2B2D42]">user_id</code>.
-                </span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle2 className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-[#2B2D42]">Stateless JWT:</strong> Bearer tokens authenticated via Supabase Auth.
-                </span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle2 className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-[#2B2D42]">Zero Leaked Secrets:</strong> Service-role keys strictly confined to backend server environment.
-                </span>
+              <div className="flex justify-between py-1">
+                <span>Access Scope</span>
+                <span className="font-semibold text-[#2B2D42]">User Sessions Only</span>
               </div>
             </div>
           </GlassCard>

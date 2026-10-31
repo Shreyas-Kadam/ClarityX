@@ -1,8 +1,10 @@
 /**
  * Authentication Service for ClarityX
+ *
+ * Interacts with FastAPI /api/auth endpoints for verified profile metadata.
  */
 
-import { apiFetch, getAuthToken, setAuthToken } from './api'
+import { apiFetch, getAuthToken } from './api'
 
 /**
  * Retrieves the currently authenticated user's profile from the backend.
@@ -10,13 +12,11 @@ import { apiFetch, getAuthToken, setAuthToken } from './api'
  *
  * @returns {Promise<{id: string, email: string, full_name: string, created_at: string, updated_at: string}>}
  */
-export async function getCurrentUser() {
-  const token = getAuthToken()
-  if (!token) {
-    return null
-  }
+export async function getCurrentUserProfile() {
   return await apiFetch('/api/auth/me')
 }
 
-export { getAuthToken, setAuthToken }
+// Backward-compatible alias
+export const getCurrentUser = getCurrentUserProfile
 
+export { getAuthToken }
