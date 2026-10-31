@@ -55,6 +55,58 @@ class ProfileRepository(BaseRepository):
             self.handle_db_error("get_profile_by_id", exc)
             return None
 
+    async def create_profile(
+        self, user_id: str, email: str = "", full_name: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        """Creates a new user profile record."""
+        try:
+            profile_data = {
+                "id": user_id,
+                "email": email or "",
+                "full_name": full_name or "",
+            }
+            response = self.client.table("profiles").insert(profile_data).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as exc:
+            self.handle_db_error("create_profile", exc)
+            return None
+
+    async def get_or_create_profile(
+        self, user_id: str, email: str = "", full_name: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieves a user profile, safely creating it if absent.
+
+        Handles concurrent creation conflicts by retrying retrieval.
+        """
+        # 1. Attempt to retrieve the existing profile
+        profile = await self.get_by_id(user_id)
+        if profile is not None:
+            return profile
+
+        # 2. If missing, attempt creation
+        try:
+            profile = await self.create_profile(
+                user_id=user_id, email=email, full_name=full_name
+            )
+            if profile is not None:
+                return profile
+        except DatabaseConnectionError:
+            raise
+        except ClarityXException as exc:
+            # Possible duplicate key conflict from concurrent creation / trigger
+            logger.info(
+                f"Profile creation conflict for user {user_id}: {exc.message}; retrying retrieval"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"Unexpected error during profile creation for {user_id}: {type(exc).__name__}; retrying retrieval"
+            )
+
+        # 3. Retrieve again to handle concurrent creation
+        return await self.get_by_id(user_id)
+
     async def update_profile(self, user_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Updates profile attributes for an existing user."""
         try:
