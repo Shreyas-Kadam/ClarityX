@@ -10,6 +10,7 @@ from datetime import datetime
 import logging
 import re
 from typing import Optional, Tuple
+import unicodedata
 from urllib.parse import quote, urlsplit
 
 import dateutil.parser
@@ -18,10 +19,14 @@ import trafilatura
 
 from app.core.config import get_settings
 from app.core.exceptions import (
+    ContentSizeExceededError,
     ExtractionError,
     SSRFSecurityError,
 )
-from app.schemas.source import WebsiteExtractionResult
+from app.schemas.source import (
+    PastedTextExtractionResult,
+    WebsiteExtractionResult,
+)
 from app.services.ssrf_service import (
     SSRFProtectedTransport,
     fetch_website_content,
@@ -311,4 +316,129 @@ _extractor = WebsiteExtractor()
 async def extract_website_content(url: str) -> WebsiteExtractionResult:
     """Convenience function to extract website content securely using the singleton extractor."""
     return await _extractor.extract(url)
+
+
+class PastedTextExtractor:
+    """Service that validates, sanitizes, and normalizes user-pasted text."""
+
+    def __init__(self):
+        self.settings = get_settings()
+
+    def extract(
+        self, text: str, title: Optional[str] = None
+    ) -> PastedTextExtractionResult:
+        """Sanitizes and normalizes pasted text content.
+
+        Enforces:
+        - Rejection of empty or whitespace-only text.
+        - Enforcement of maximum character limit and UTF-8 byte limit.
+        - Line-ending normalization (\r\n and \r to \n).
+        - Removal of null bytes (\x00) and dangerous control characters.
+        - Preservation of meaningful whitespace, paragraphs, and Unicode content.
+        - Generation of sensible title from first meaningful line when not provided.
+        - Exact computation of character and word counts.
+
+        Returns:
+            PastedTextExtractionResult
+
+        Raises:
+            ExtractionError: If text is empty or whitespace only.
+            ContentSizeExceededError: If text exceeds character or UTF-8 byte limits.
+        """
+        if not text or not isinstance(text, str) or not text.strip():
+            raise ExtractionError(
+                message="Pasted text must not be empty or whitespace only.",
+                status_code=422,
+            )
+
+        # 1. Enforce character limit
+        if len(text) > self.settings.MAX_PASTED_TEXT_LENGTH:
+            raise ContentSizeExceededError(
+                message=f"Pasted text character count ({len(text)}) exceeds maximum allowable limit of {self.settings.MAX_PASTED_TEXT_LENGTH} characters."
+            )
+
+        # 2. Enforce UTF-8 byte limit (prevent multibyte Unicode expansion bypass)
+        utf8_bytes = text.encode("utf-8")
+        if len(utf8_bytes) > self.settings.MAX_PASTED_TEXT_BYTES:
+            raise ContentSizeExceededError(
+                message=f"Pasted text size ({len(utf8_bytes)} bytes) exceeds maximum allowable limit of {self.settings.MAX_PASTED_TEXT_BYTES} bytes."
+            )
+
+        # 3. Normalize line endings (\r\n and \r to \n)
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+
+        # 4. Remove null bytes (\x00) and disallowed control characters.
+        # Preserve newlines (\n) and tabs (\t), strip C0/C1 control codes and DEL (\x7f).
+        cleaned_chars = []
+        for ch in normalized:
+            if ch in ("\n", "\t"):
+                cleaned_chars.append(ch)
+            elif ch == "\x00" or ord(ch) == 127 or unicodedata.category(ch) == "Cc":
+                continue
+            else:
+                cleaned_chars.append(ch)
+
+        cleaned_text = "".join(cleaned_chars)
+        final_content = cleaned_text.strip()
+
+        if not final_content:
+            raise ExtractionError(
+                message="Pasted text must not be empty or whitespace only.",
+                status_code=422,
+            )
+
+        # 5. Handle title resolution
+        final_title: str = "Untitled Pasted Text"
+
+        if title is not None:
+            user_title = title.strip()
+            if not user_title:
+                raise ExtractionError(
+                    message="Title must not be whitespace only if provided.",
+                    status_code=422,
+                )
+            final_title = user_title[:255]
+        else:
+            # Generate title from the first meaningful non-empty line
+            generated_title = None
+            for line in final_content.splitlines():
+                candidate = line.strip()
+                if candidate:
+                    # Strip leading markdown header markers (e.g., "# Title" -> "Title")
+                    clean_candidate = re.sub(r"^#+\s*", "", candidate).strip()
+                    if clean_candidate:
+                        generated_title = clean_candidate[:255]
+                        break
+            final_title = generated_title or "Untitled Pasted Text"
+
+        # 6. Compute exact metrics
+        character_count = len(final_content)
+        word_count = len(final_content.split())
+
+        logger.info(
+            f"Successfully processed pasted text: {character_count} chars, {word_count} words"
+        )
+
+        return PastedTextExtractionResult(
+            title=final_title,
+            source_type="pasted_text",
+            extracted_content=final_content,
+            character_count=character_count,
+            word_count=word_count,
+            extraction_method="direct",
+            extraction_status="success",
+            error_message=None,
+        )
+
+
+# Reusable singleton instance for pasted text extraction
+_pasted_text_extractor = PastedTextExtractor()
+
+
+def extract_pasted_text(
+    text: str, title: Optional[str] = None
+) -> PastedTextExtractionResult:
+    """Convenience function to extract and normalize pasted text using the singleton extractor."""
+    return _pasted_text_extractor.extract(text, title=title)
+
 

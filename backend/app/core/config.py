@@ -71,6 +71,12 @@ class Settings:
     USER_AGENT: str = (
         "ClarityX/0.1.0 (AI Information Gap Detection; +https://github.com/ClarityX)"
     )
+    MAX_PASTED_TEXT_LENGTH: int = int(
+        os.getenv("MAX_PASTED_TEXT_LENGTH", "1048576")
+    )  # 1,048,576 characters
+    MAX_PASTED_TEXT_BYTES: int = int(
+        os.getenv("MAX_PASTED_TEXT_BYTES", "1048576")
+    )  # 1,048,576 UTF-8 bytes
 
     @property
     def is_supabase_configured(self) -> bool:

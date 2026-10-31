@@ -7,7 +7,9 @@ from app.services.ssrf_service import (
     SSRFProtectedTransport,
 )
 from app.services.extraction_service import (
+    PastedTextExtractor,
     WebsiteExtractor,
+    extract_pasted_text,
     extract_website_content,
 )
 
@@ -18,4 +20,6 @@ __all__ = [
     "SSRFProtectedTransport",
     "WebsiteExtractor",
     "extract_website_content",
+    "PastedTextExtractor",
+    "extract_pasted_text",
 ]
