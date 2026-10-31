@@ -96,6 +96,17 @@ class ExtractionError(ClarityXException):
         super().__init__(message=message, status_code=status_code, detail=detail or message)
 
 
+class EncryptedDocumentError(ClarityXException):
+    """Raised when an uploaded document is password-protected or encrypted."""
+
+    def __init__(
+        self,
+        message: str = "Password-protected or encrypted documents cannot be processed.",
+        detail: str = "",
+    ):
+        super().__init__(message=message, status_code=422, detail=detail or message)
+
+
 def sanitize_validation_errors(errors: list) -> list:
     """Strips raw input values and sensitive data from validation error structures."""
     sanitized = []

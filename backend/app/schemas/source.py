@@ -90,3 +90,28 @@ class PastedTextExtractionResult(BaseModel):
         return _identity().__await__()
 
 
+class DocumentExtractionResult(BaseModel):
+    """Structured extraction result from document processing (PDF/DOCX)."""
+
+    file_name: str
+    file_type: Literal["pdf", "docx"]
+    file_size_bytes: int
+    title: str = "Untitled Document"
+    source_type: Literal["document"] = "document"
+    extracted_content: str
+    character_count: int
+    word_count: int
+    page_count: Optional[int] = None
+    extraction_method: Literal["pypdf", "python-docx"]
+    extraction_status: Literal["success", "partial"] = "success"
+    error_message: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    def __await__(self):
+        async def _identity():
+            return self
+
+        return _identity().__await__()
+
+

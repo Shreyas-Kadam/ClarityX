@@ -78,6 +78,26 @@ class Settings:
         os.getenv("MAX_PASTED_TEXT_BYTES", "1048576")
     )  # 1,048,576 UTF-8 bytes
 
+    # Document Extraction Settings (Checkpoint 4.3)
+    MAX_DOCUMENT_FILE_SIZE: int = int(
+        os.getenv("MAX_DOCUMENT_FILE_SIZE", str(10 * 1024 * 1024))
+    )  # 10 MB (10,485,760 bytes)
+    MAX_DOCUMENT_EXTRACTED_CHARS: int = int(
+        os.getenv("MAX_DOCUMENT_EXTRACTED_CHARS", "1048576")
+    )  # 1,048,576 characters
+    MAX_DOCUMENT_EXTRACTED_BYTES: int = int(
+        os.getenv("MAX_DOCUMENT_EXTRACTED_BYTES", str(2 * 1024 * 1024))
+    )  # 2 MB (2,097,152 bytes)
+    MAX_DOCX_UNCOMPRESSED_RATIO: float = float(
+        os.getenv("MAX_DOCX_UNCOMPRESSED_RATIO", "100.0")
+    )
+    MAX_DOCX_TOTAL_UNCOMPRESSED_BYTES: int = int(
+        os.getenv("MAX_DOCX_TOTAL_UNCOMPRESSED_BYTES", str(50 * 1024 * 1024))
+    )  # 50 MB (52,428,800 bytes)
+    MAX_PDF_PAGES: int = int(
+        os.getenv("MAX_PDF_PAGES", "200")
+    )
+
     @property
     def is_supabase_configured(self) -> bool:
         """Checks whether valid Supabase configuration is present."""
