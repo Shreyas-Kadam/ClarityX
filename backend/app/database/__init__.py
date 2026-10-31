@@ -10,6 +10,7 @@ if TYPE_CHECKING:
         BaseRepository,
         ProfileRepository,
         ResearchRepository,
+        SourceRepository,
     )
     from app.database.supabase import (
         get_supabase_admin_client,
@@ -32,6 +33,7 @@ def __getattr__(name: str):
         "BaseRepository",
         "ProfileRepository",
         "ResearchRepository",
+        "SourceRepository",
     ):
         from app.database import repositories
         return getattr(repositories, name)
@@ -46,4 +48,6 @@ __all__ = [
     "BaseRepository",
     "ProfileRepository",
     "ResearchRepository",
+    "SourceRepository",
 ]
+

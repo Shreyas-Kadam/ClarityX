@@ -1,7 +1,8 @@
-"""Pydantic schemas for source extraction."""
+"""Pydantic schemas for source extraction and persistence."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import List, Literal, Optional
+from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -113,5 +114,92 @@ class DocumentExtractionResult(BaseModel):
             return self
 
         return _identity().__await__()
+
+
+# =============================================================================
+# PERSISTENCE & API SCHEMAS (Checkpoint 4.4.1)
+# =============================================================================
+
+ALLOWED_SOURCE_TYPES = {"website", "pasted_text", "document"}
+ALLOWED_EXTRACTION_STATUSES = {"success", "partial", "failed"}
+
+
+def make_content_preview(content: str, max_chars: int = 250) -> str:
+    """Generates a truncated content preview capped at max_chars with '...' if longer.
+    Preserves original whitespace, truncating only when necessary.
+    """
+    if not content:
+        return ""
+    if len(content) <= max_chars:
+        return content
+    return content[:max_chars] + "..."
+
+
+class SourceResponse(BaseModel):
+    """Full source representation including extracted content."""
+
+    id: UUID
+    research_id: UUID
+    source_code: str = Field(..., pattern=r"^S[0-9]+$")
+    title: str = "Untitled Source"
+    url: Optional[str] = None
+    source_type: Literal["website", "pasted_text", "document"]
+    extracted_content: str = ""
+    published_at: Optional[datetime] = None
+    accessed_at: datetime
+    extraction_status: Literal["success", "partial", "failed"] = "success"
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SourcePreviewResponse(BaseModel):
+    """Source list item representation exposing only content_preview (never full extracted_content)."""
+
+    id: UUID
+    research_id: UUID
+    source_code: str = Field(..., pattern=r"^S[0-9]+$")
+    title: str = "Untitled Source"
+    url: Optional[str] = None
+    source_type: Literal["website", "pasted_text", "document"]
+    content_preview: str = Field(
+        default="",
+        description="Truncated preview of extracted content (maximum 250 characters + '...' if truncated).",
+    )
+    published_at: Optional[datetime] = None
+    accessed_at: datetime
+    extraction_status: Literal["success", "partial", "failed"] = "success"
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SourceListResponse(BaseModel):
+    """Schema representing paginated list of sources."""
+
+    sources: List[SourcePreviewResponse]
+    total: int
+    limit: int = 50
+    offset: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SourceEnvelope(BaseModel):
+    """Standard API envelope for single source responses."""
+
+    success: bool = True
+    message: str = "Source retrieved successfully"
+    data: SourceResponse
+
+
+class SourceListEnvelope(BaseModel):
+    """Standard API envelope for source listing responses."""
+
+    success: bool = True
+    message: str = "Sources retrieved successfully"
+    data: SourceListResponse
+
+
 
 
