@@ -1,10 +1,12 @@
 """Pydantic schemas for research sessions."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.source import SourcePreviewResponse
 
 ALLOWED_RESEARCH_STATUSES = {"pending", "processing", "completed", "failed"}
 
@@ -116,4 +118,93 @@ class DeleteResponse(BaseModel):
 
     success: bool = True
     message: str = "Research deleted successfully"
+
+
+class EvidenceReferenceResponse(BaseModel):
+    """Schema representing a verified evidence quotation referencing a source."""
+
+    id: UUID
+    finding_id: Optional[UUID] = None
+    source_id: UUID
+    source_code: Optional[str] = None
+    evidence_text: str
+    evidence_type: str = "supporting"
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FindingResponse(BaseModel):
+    """Schema representing an information gap finding with attached evidence references."""
+
+    id: UUID
+    research_id: Optional[UUID] = None
+    category: str
+    title: str
+    description: str
+    severity: str
+    confidence: Optional[float] = None
+    recommended_action: str = ""
+    evidence_references: List[EvidenceReferenceResponse] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VerificationItemResponse(BaseModel):
+    """Schema representing an actionable verification task."""
+
+    id: UUID
+    research_id: Optional[UUID] = None
+    finding_id: Optional[UUID] = None
+    task: str
+    status: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UnresolvedQuestionResponse(BaseModel):
+    """Schema representing a broad unresolved research question (finding_id = NULL)."""
+
+    id: UUID
+    task: str
+    status: str = "pending"
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VerificationStatusUpdate(BaseModel):
+    """Payload to update the completion status of a verification item."""
+
+    status: Literal["pending", "completed"]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ResearchReportData(BaseModel):
+    """Payload container for complete research report data."""
+
+    research_id: UUID
+    research_goal: str
+    status: str
+    summary: str = ""
+    findings: List[FindingResponse] = Field(default_factory=list)
+    sources: List[SourcePreviewResponse] = Field(default_factory=list)
+    unresolved_questions: List[UnresolvedQuestionResponse] = Field(default_factory=list)
+    verification_items: List[VerificationItemResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResearchReportEnvelope(BaseModel):
+    """Standard API envelope for complete research report."""
+
+    success: bool = True
+    message: Optional[str] = None
+    data: ResearchReportData
+
 

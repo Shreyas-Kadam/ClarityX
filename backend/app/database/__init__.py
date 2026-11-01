@@ -8,9 +8,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.database.repositories import (
         BaseRepository,
+        EvidenceReferenceRepository,
+        FindingRepository,
         ProfileRepository,
         ResearchRepository,
         SourceRepository,
+        VerificationRepository,
+        map_verification_to_finding_id,
+        ALLOWED_VERIFICATION_STATUSES,
     )
     from app.database.supabase import (
         get_supabase_admin_client,
@@ -34,6 +39,11 @@ def __getattr__(name: str):
         "ProfileRepository",
         "ResearchRepository",
         "SourceRepository",
+        "FindingRepository",
+        "EvidenceReferenceRepository",
+        "VerificationRepository",
+        "map_verification_to_finding_id",
+        "ALLOWED_VERIFICATION_STATUSES",
     ):
         from app.database import repositories
         return getattr(repositories, name)
@@ -49,5 +59,10 @@ __all__ = [
     "ProfileRepository",
     "ResearchRepository",
     "SourceRepository",
+    "FindingRepository",
+    "EvidenceReferenceRepository",
+    "VerificationRepository",
+    "map_verification_to_finding_id",
+    "ALLOWED_VERIFICATION_STATUSES",
 ]
 

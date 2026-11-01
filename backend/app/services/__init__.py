@@ -21,6 +21,7 @@ from app.services.ai_service import (
     normalize_grounding_text,
     verify_evidence_grounding,
 )
+from app.services.analysis_persistence_service import AnalysisPersistenceService
 
 __all__ = [
     "validate_url_syntax",
@@ -38,4 +39,5 @@ __all__ = [
     "clean_json_response",
     "normalize_grounding_text",
     "verify_evidence_grounding",
+    "AnalysisPersistenceService",
 ]

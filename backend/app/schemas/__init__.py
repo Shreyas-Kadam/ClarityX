@@ -3,12 +3,19 @@
 from app.schemas.auth import AuthenticatedUser, UserProfileResponse
 from app.schemas.research import (
     DeleteResponse,
+    EvidenceReferenceResponse,
+    FindingResponse,
+    ResearchReportData,
+    ResearchReportEnvelope,
     ResearchSessionCreate,
     ResearchSessionEnvelope,
     ResearchSessionListEnvelope,
     ResearchSessionListResponse,
     ResearchSessionResponse,
     ResearchSessionUpdate,
+    UnresolvedQuestionResponse,
+    VerificationItemResponse,
+    VerificationStatusUpdate,
 )
 from app.schemas.source import (
     ALLOWED_EXTRACTION_STATUSES,
@@ -47,6 +54,13 @@ __all__ = [
     "ResearchSessionEnvelope",
     "ResearchSessionListEnvelope",
     "DeleteResponse",
+    "EvidenceReferenceResponse",
+    "FindingResponse",
+    "VerificationItemResponse",
+    "UnresolvedQuestionResponse",
+    "VerificationStatusUpdate",
+    "ResearchReportData",
+    "ResearchReportEnvelope",
     "WebsiteExtractRequest",
     "WebsiteExtractionResult",
     "PastedTextExtractRequest",
