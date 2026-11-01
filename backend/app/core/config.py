@@ -56,7 +56,14 @@ class Settings:
 
     # OpenRouter AI Credentials (Phase 6)
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_BASE_URL: str = os.getenv(
+        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    )
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+    AI_REQUEST_TIMEOUT: float = float(os.getenv("AI_REQUEST_TIMEOUT", "35.0"))
+    MAX_SOURCE_CONTENT_CHARS_FOR_AI: int = int(
+        os.getenv("MAX_SOURCE_CONTENT_CHARS_FOR_AI", "12000")
+    )
 
     # Extraction Settings (Phase 4)
     MAX_WEBSITE_CONTENT_LENGTH: int = int(
@@ -112,7 +119,7 @@ class Settings:
     @property
     def is_ai_configured(self) -> bool:
         """Checks whether OpenRouter AI credentials are configured."""
-        return bool(self.OPENROUTER_API_KEY)
+        return bool(self.OPENROUTER_API_KEY and self.OPENROUTER_API_KEY.strip())
 
 
 @lru_cache()

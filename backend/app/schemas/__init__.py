@@ -26,6 +26,16 @@ from app.schemas.source import (
     WebsiteExtractionResult,
     make_content_preview,
 )
+from app.schemas.analysis import (
+    ALLOWED_EVIDENCE_TYPES,
+    ALLOWED_FINDING_CATEGORIES,
+    ALLOWED_SEVERITIES,
+    LLMAnalysisResponse,
+    LLMEvidenceItem,
+    LLMFindingItem,
+    LLMVerificationItem,
+    SourceAnalysisInput,
+)
 
 __all__ = [
     "AuthenticatedUser",
@@ -51,5 +61,13 @@ __all__ = [
     "ALLOWED_SOURCE_TYPES",
     "ALLOWED_EXTRACTION_STATUSES",
     "make_content_preview",
+    "SourceAnalysisInput",
+    "LLMEvidenceItem",
+    "LLMFindingItem",
+    "LLMVerificationItem",
+    "LLMAnalysisResponse",
+    "ALLOWED_FINDING_CATEGORIES",
+    "ALLOWED_EVIDENCE_TYPES",
+    "ALLOWED_SEVERITIES",
 ]
 

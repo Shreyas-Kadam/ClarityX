@@ -107,6 +107,42 @@ class EncryptedDocumentError(ClarityXException):
         super().__init__(message=message, status_code=422, detail=detail or message)
 
 
+class AIProviderError(ClarityXException):
+    """Raised when the AI model provider (OpenRouter) fails or returns an API error."""
+
+    def __init__(
+        self,
+        message: str = "The AI service encountered an error while processing the request.",
+        detail: str = "External AI provider failed to complete analysis.",
+        status_code: int = 502,
+    ):
+        super().__init__(message=message, status_code=status_code, detail=detail or message)
+
+
+class AIResponseValidationError(ClarityXException):
+    """Raised when the AI response is malformed, invalid JSON, or fails schema validation."""
+
+    def __init__(
+        self,
+        message: str = "The AI model produced an invalid or unparseable analysis output.",
+        detail: str = "AI analysis output failed schema validation.",
+        status_code: int = 502,
+    ):
+        super().__init__(message=message, status_code=status_code, detail=detail or message)
+
+
+class AITimeoutError(ClarityXException):
+    """Raised when the AI analysis request exceeds the configured time limit."""
+
+    def __init__(
+        self,
+        message: str = "The AI analysis request timed out. Please try again.",
+        detail: str = "External AI analysis request exceeded the maximum allowed time limit.",
+        status_code: int = 504,
+    ):
+        super().__init__(message=message, status_code=status_code, detail=detail or message)
+
+
 def sanitize_validation_errors(errors: list) -> list:
     """Strips raw input values and sensitive data from validation error structures."""
     sanitized = []

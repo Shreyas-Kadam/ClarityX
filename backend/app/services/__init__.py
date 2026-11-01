@@ -14,6 +14,13 @@ from app.services.extraction_service import (
     extract_pasted_text,
     extract_website_content,
 )
+from app.services.ai_service import (
+    AIService,
+    build_analysis_prompt,
+    clean_json_response,
+    normalize_grounding_text,
+    verify_evidence_grounding,
+)
 
 __all__ = [
     "validate_url_syntax",
@@ -26,4 +33,9 @@ __all__ = [
     "extract_pasted_text",
     "DocumentExtractor",
     "extract_document",
+    "AIService",
+    "build_analysis_prompt",
+    "clean_json_response",
+    "normalize_grounding_text",
+    "verify_evidence_grounding",
 ]
