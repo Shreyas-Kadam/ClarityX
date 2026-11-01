@@ -14,6 +14,7 @@ from app.schemas.research import (
     ResearchSessionResponse,
     ResearchSessionUpdate,
     UnresolvedQuestionResponse,
+    VerificationItemEnvelope,
     VerificationItemResponse,
     VerificationStatusUpdate,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "EvidenceReferenceResponse",
     "FindingResponse",
     "VerificationItemResponse",
+    "VerificationItemEnvelope",
     "UnresolvedQuestionResponse",
     "VerificationStatusUpdate",
     "ResearchReportData",

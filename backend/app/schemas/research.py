@@ -208,3 +208,10 @@ class ResearchReportEnvelope(BaseModel):
     data: ResearchReportData
 
 
+class VerificationItemEnvelope(BaseModel):
+    """Standard API envelope for single verification item responses."""
+
+    success: bool = True
+    message: Optional[str] = "Verification item updated successfully"
+    data: VerificationItemResponse
+

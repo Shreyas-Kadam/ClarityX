@@ -395,7 +395,13 @@ Expected response:
   "message": "Verification item updated successfully",
   "data": {
     "id": "uuid",
-    "status": "completed"
+    "research_id": "uuid",
+    "finding_id": "uuid or null",
+    "task": "Verify registration details directly with the state licensing board.",
+    "status": "completed",
+    "completed_at": "2026-11-01T12:00:00Z",
+    "created_at": "2026-11-01T10:00:00Z",
+    "updated_at": "2026-11-01T12:00:00Z"
   }
 }
 ```
