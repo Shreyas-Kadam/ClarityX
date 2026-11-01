@@ -17,7 +17,7 @@ import {
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
 import { StatusBadge } from '@/components/common/StatusBadge'
-import { getResearchById, deleteResearch } from '@/services/researchService'
+import { getResearchById, deleteResearch, analyzeResearch } from '@/services/researchService'
 import { getSources, deleteSource } from '@/services/sourceService'
 import { SourceCard } from '@/components/sources/SourceCard'
 import { AddSourceForm } from '@/components/sources/AddSourceForm'
@@ -43,12 +43,14 @@ export function ResearchDetailPage() {
   const [sources, setSources] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadingSources, setLoadingSources] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [activeTab, setActiveTab] = useState('summary')
   const [isDeleting, setIsDeleting] = useState(false)
   const [showAddSource, setShowAddSource] = useState(false)
   const [isDeletingSourceId, setIsDeletingSourceId] = useState(null)
   const [sourceFeedback, setSourceFeedback] = useState({ error: '', success: '' })
+  const [analysisFeedback, setAnalysisFeedback] = useState({ error: '', success: '' })
 
   useEffect(() => {
     let isCancelled = false
@@ -98,6 +100,7 @@ export function ResearchDetailPage() {
   }, [id])
 
   const handleDelete = async () => {
+    if (isAnalyzing || isDeleting) return
     if (!window.confirm('Are you sure you want to permanently delete this research session?')) {
       return
     }
@@ -114,7 +117,7 @@ export function ResearchDetailPage() {
 
   const handleRefreshSources = async () => {
     const researchId = session?.id || id
-    if (!researchId) return
+    if (!researchId || isAnalyzing) return
 
     setLoadingSources(true)
     try {
@@ -145,7 +148,7 @@ export function ResearchDetailPage() {
 
   const handleDeleteSource = async (sourceId) => {
     const researchId = session?.id || id
-    if (!researchId || isDeletingSourceId) return
+    if (!researchId || isDeletingSourceId || isAnalyzing) return
 
     setIsDeletingSourceId(sourceId)
     setSourceFeedback({ error: '', success: '' })
@@ -163,6 +166,78 @@ export function ResearchDetailPage() {
       })
     } finally {
       setIsDeletingSourceId(null)
+    }
+  }
+
+  // Derived source eligibility checks
+  const usableSourcesCount = sources.filter(
+    (s) => s.extraction_status !== 'failed' && Boolean(s.content_preview?.trim())
+  ).length
+  const hasUsableSources = usableSourcesCount > 0
+
+  const handleRunAnalysis = async () => {
+    // 1. Prevent duplicate submissions
+    if (isAnalyzing) return
+    // 2. Prevent analysis if session is being deleted
+    if (isDeleting) return
+    // 3. Check that at least one usable source exists
+    if (!hasUsableSources) {
+      setAnalysisFeedback({
+        error: 'At least one valid source with readable extracted content is required before running AI analysis.',
+        success: '',
+      })
+      return
+    }
+
+    const researchId = session?.id || id
+    if (!researchId) return
+
+    // 4. Set analyzing state and clear previous feedback
+    setIsAnalyzing(true)
+    setAnalysisFeedback({ error: '', success: '' })
+
+    try {
+      // 5. Call analyzeResearch
+      const response = await analyzeResearch(researchId)
+
+      // 6. Read complete report from response.data
+      if (response?.data) {
+        // 7. Normalize report ID
+        const normalized = {
+          ...response.data,
+          id: response.data.research_id || response.data.id || researchId,
+        }
+
+        // 8. Update session
+        setSession(normalized)
+
+        // 9. Update source list using returned report's sources
+        if (Array.isArray(normalized.sources)) {
+          setSources(normalized.sources)
+        }
+
+        // 10. Display success message with finding and verification item counts
+        const fCount = normalized.findings?.length || 0
+        const vCount = normalized.verification_items?.length || 0
+        setAnalysisFeedback({
+          error: '',
+          success: `AI information gap analysis completed successfully! Discovered ${fCount} categorized gap finding${fCount === 1 ? '' : 's'} and generated ${vCount} verification checklist item${vCount === 1 ? '' : 's'}.`,
+        })
+      } else {
+        setAnalysisFeedback({
+          error: 'Analysis completed but returned an empty report structure.',
+          success: '',
+        })
+      }
+    } catch (err) {
+      // 11. Catch API errors and display normalized err.message
+      setAnalysisFeedback({
+        error: err.message || 'AI analysis failed to complete. Please check service configuration.',
+        success: '',
+      })
+    } finally {
+      // 12. Always reset isAnalyzing
+      setIsAnalyzing(false)
     }
   }
 
@@ -208,6 +283,7 @@ export function ResearchDetailPage() {
   const findingsCount = session.findings?.length || 0
   const verificationCount = session.verification_items?.length || 0
   const unresolvedCount = session.unresolved_questions?.length || 0
+  const isCompleted = session.status === 'completed'
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -221,18 +297,117 @@ export function ResearchDetailPage() {
           Back to History
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Primary CTA: Run / Re-run AI Gap Analysis */}
+          <NeuButton
+            variant="cta"
+            size="sm"
+            onClick={handleRunAnalysis}
+            disabled={isAnalyzing || isDeleting || !hasUsableSources}
+            icon={Sparkles}
+            title={
+              !hasUsableSources
+                ? 'Add at least one usable source with readable text to enable analysis'
+                : isCompleted
+                  ? 'Re-evaluate research sources with AI gap detection'
+                  : 'Run AI information gap analysis'
+            }
+          >
+            {isAnalyzing ? (
+              <span className="flex items-center gap-1.5">
+                <span className="size-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                Analyzing Sources...
+              </span>
+            ) : isCompleted ? (
+              'Re-run Gap Analysis'
+            ) : (
+              'Run Gap Analysis'
+            )}
+          </NeuButton>
+
+          {/* Delete Session Button */}
           <NeuButton
             variant="destructive"
             size="sm"
             onClick={handleDelete}
-            disabled={isDeleting}
+            disabled={isDeleting || isAnalyzing}
             icon={Trash2}
           >
             {isDeleting ? 'Deleting...' : 'Delete Session'}
           </NeuButton>
         </div>
       </div>
+
+      {/* Explanatory notice when analysis is disabled due to missing usable sources */}
+      {!hasUsableSources && !isAnalyzing && (
+        <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-800 text-xs flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4 shrink-0 text-amber-600" />
+            <span>
+              {sources.length === 0
+                ? 'AI analysis is currently disabled because no sources are attached. Ingest at least one reference source in the Source Material tab to enable gap analysis.'
+                : 'AI analysis is currently disabled because all attached sources failed extraction or lack readable text. Attach a source with readable content to enable analysis.'}
+            </span>
+          </div>
+          {activeTab !== 'sources' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('sources')}
+              className="font-bold text-[#D90429] hover:underline cursor-pointer text-xs"
+            >
+              Go to Source Material &rarr;
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Active Analysis Progress Banner */}
+      {isAnalyzing && (
+        <div className="p-4 rounded-2xl neu-inset bg-amber-50/95 border border-amber-300 text-amber-950 text-xs space-y-2 animate-pulse">
+          <div className="flex items-center gap-2.5 font-bold text-sm text-[#2B2D42]">
+            <div className="size-4 border-2 border-[#D90429] border-t-transparent rounded-full animate-spin shrink-0" />
+            AI Information Gap Analysis in Progress
+          </div>
+          <p className="text-xs leading-relaxed text-[#2B2D42]">
+            AI Information Gap Analysis in progress. Cross-referencing your source material and detecting missing, outdated, conflicting, and unverified information. This may take up to 35 seconds.
+          </p>
+        </div>
+      )}
+
+      {/* Analysis Feedback Banners */}
+      {analysisFeedback.success && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="size-4 text-emerald-600 shrink-0" />
+            <span>{analysisFeedback.success}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAnalysisFeedback((p) => ({ ...p, success: '' }))}
+            className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+            title="Dismiss notification"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
+
+      {analysisFeedback.error && (
+        <div className="p-3.5 rounded-xl bg-[#EF233C]/10 border border-[#EF233C]/30 text-[#D90429] text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4 text-[#D90429] shrink-0" />
+            <span>{analysisFeedback.error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAnalysisFeedback((p) => ({ ...p, error: '' }))}
+            className="text-[#D90429] hover:text-[#2B2D42] cursor-pointer"
+            title="Dismiss notification"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main Session Overview Header */}
       <GlassCard className="space-y-4 p-6 sm:p-8">
@@ -317,6 +492,9 @@ export function ResearchDetailPage() {
           }`}
         >
           Information Gaps
+          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-[#2B2D42]">
+            {findingsCount}
+          </span>
           <span className="text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
             Phase VI
           </span>
@@ -411,7 +589,7 @@ export function ResearchDetailPage() {
                 variant="default"
                 size="sm"
                 onClick={handleRefreshSources}
-                disabled={loadingSources}
+                disabled={loadingSources || isAnalyzing}
                 icon={RefreshCw}
                 title="Refresh source list"
               >
@@ -426,6 +604,7 @@ export function ResearchDetailPage() {
                     setShowAddSource((prev) => !prev)
                     setSourceFeedback({ error: '', success: '' })
                   }}
+                  disabled={isAnalyzing}
                   icon={showAddSource ? X : Plus}
                 >
                   {showAddSource ? 'Cancel' : 'Add Source'}
@@ -433,6 +612,30 @@ export function ResearchDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Contextual Ready for AI Analysis Banner */}
+          {hasUsableSources && !isAnalyzing && (
+            <div className="p-4 rounded-xl neu-inset bg-white/40 border border-white/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold text-[#2B2D42] flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-[#D90429]" />
+                  Sources Ready for AI Evaluation
+                </h4>
+                <p className="text-[11px] text-[#8D99AE]">
+                  {usableSourcesCount} valid source{usableSourcesCount === 1 ? '' : 's'} available to evaluate against your research goal.
+                </p>
+              </div>
+              <NeuButton
+                variant="cta"
+                size="sm"
+                onClick={handleRunAnalysis}
+                disabled={isAnalyzing || isDeleting}
+                icon={Sparkles}
+              >
+                {isCompleted ? 'Re-run Gap Analysis' : 'Run Gap Analysis'}
+              </NeuButton>
+            </div>
+          )}
 
           {/* Source Limit Notice */}
           {sources.length >= 5 && !showAddSource && (
@@ -486,6 +689,7 @@ export function ResearchDetailPage() {
               currentSourceCount={sources.length}
               onSuccess={handleSourceAdded}
               onCancel={() => setShowAddSource(false)}
+              disabled={isAnalyzing}
             />
           )}
 
@@ -513,6 +717,7 @@ export function ResearchDetailPage() {
                       setShowAddSource(true)
                       setSourceFeedback({ error: '', success: '' })
                     }}
+                    disabled={isAnalyzing}
                   >
                     Add First Source
                   </NeuButton>
@@ -527,6 +732,7 @@ export function ResearchDetailPage() {
                   source={source}
                   onDelete={handleDeleteSource}
                   isDeleting={isDeletingSourceId === source.id}
+                  disabled={isAnalyzing}
                 />
               ))}
             </div>

@@ -32,12 +32,14 @@ const MAX_SOURCES_LIMIT = 5
  * @param {number} [props.currentSourceCount=0] - Number of existing sources
  * @param {Function} props.onSuccess - Callback invoked when a source is successfully added
  * @param {Function} [props.onCancel] - Optional callback to cancel/close the form
+ * @param {boolean} [props.disabled=false] - Whether form actions are disabled (e.g. during active analysis)
  */
 export function AddSourceForm({
   researchId,
   currentSourceCount = 0,
   onSuccess,
   onCancel,
+  disabled = false,
 }) {
   const [sourceType, setSourceType] = useState('website') // 'website' | 'pasted_text' | 'document'
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -55,10 +57,12 @@ export function AddSourceForm({
   const [docFile, setDocFile] = useState(null)
 
   const isAtCapacity = currentSourceCount >= MAX_SOURCES_LIMIT
+  const isDisabled = isSubmitting || disabled
 
   // Handle Website Source Submission
   const handleWebsiteSubmit = async (e) => {
     e.preventDefault()
+    if (isDisabled) return
     setErrorMsg('')
 
     const trimmed = websiteUrl.trim()
@@ -89,6 +93,7 @@ export function AddSourceForm({
   // Handle Pasted Text Submission
   const handleTextSubmit = async (e) => {
     e.preventDefault()
+    if (isDisabled) return
     setErrorMsg('')
 
     const trimmedText = textContent.trim()
@@ -122,6 +127,7 @@ export function AddSourceForm({
 
   // Handle Document Selection
   const handleFileChange = (e) => {
+    if (isDisabled) return
     setErrorMsg('')
     const file = e.target.files?.[0]
     if (!file) return
@@ -150,6 +156,7 @@ export function AddSourceForm({
   // Handle Document Submission
   const handleDocumentSubmit = async (e) => {
     e.preventDefault()
+    if (isDisabled) return
     setErrorMsg('')
 
     if (!docFile) {
@@ -223,7 +230,7 @@ export function AddSourceForm({
             setSourceType('website')
             setErrorMsg('')
           }}
-          disabled={isSubmitting}
+          disabled={isDisabled}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             sourceType === 'website'
               ? 'bg-[#2B2D42] text-[#EDF2F4] shadow-sm'
@@ -240,7 +247,7 @@ export function AddSourceForm({
             setSourceType('pasted_text')
             setErrorMsg('')
           }}
-          disabled={isSubmitting}
+          disabled={isDisabled}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             sourceType === 'pasted_text'
               ? 'bg-[#2B2D42] text-[#EDF2F4] shadow-sm'
@@ -257,7 +264,7 @@ export function AddSourceForm({
             setSourceType('document')
             setErrorMsg('')
           }}
-          disabled={isSubmitting}
+          disabled={isDisabled}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             sourceType === 'document'
               ? 'bg-[#2B2D42] text-[#EDF2F4] shadow-sm'
@@ -291,7 +298,7 @@ export function AddSourceForm({
               placeholder="https://example.com/research-article"
               value={websiteUrl}
               onChange={(e) => setWebsiteUrl(e.target.value)}
-              disabled={isSubmitting}
+              disabled={isDisabled}
               icon={Globe}
               required
             />
@@ -306,7 +313,7 @@ export function AddSourceForm({
                 variant="ghost"
                 size="sm"
                 onClick={onCancel}
-                disabled={isSubmitting}
+                disabled={isDisabled}
               >
                 Cancel
               </NeuButton>
@@ -315,7 +322,7 @@ export function AddSourceForm({
               type="submit"
               variant="cta"
               size="sm"
-              disabled={isSubmitting}
+              disabled={isDisabled}
               icon={Globe}
             >
               {isSubmitting ? 'Extracting Website...' : 'Add Website Source'}
@@ -336,7 +343,7 @@ export function AddSourceForm({
               placeholder="e.g. Expert Interview Transcript, Regulatory Notice"
               value={textTitle}
               onChange={(e) => setTextTitle(e.target.value)}
-              disabled={isSubmitting}
+              disabled={isDisabled}
               maxLength={255}
             />
           </div>
@@ -354,7 +361,7 @@ export function AddSourceForm({
               placeholder="Paste text content, excerpts, transcripts, or notes here..."
               value={textContent}
               onChange={(e) => setTextContent(e.target.value)}
-              disabled={isSubmitting}
+              disabled={isDisabled}
               rows={6}
               required
             />
@@ -366,7 +373,7 @@ export function AddSourceForm({
                 variant="ghost"
                 size="sm"
                 onClick={onCancel}
-                disabled={isSubmitting}
+                disabled={isDisabled}
               >
                 Cancel
               </NeuButton>
@@ -375,7 +382,7 @@ export function AddSourceForm({
               type="submit"
               variant="cta"
               size="sm"
-              disabled={isSubmitting}
+              disabled={isDisabled}
               icon={FileText}
             >
               {isSubmitting ? 'Saving Text...' : 'Add Pasted Text'}
@@ -396,7 +403,7 @@ export function AddSourceForm({
               placeholder="e.g. Q3 Financial Statement, Clinical Study"
               value={docTitle}
               onChange={(e) => setDocTitle(e.target.value)}
-              disabled={isSubmitting}
+              disabled={isDisabled}
               maxLength={255}
             />
           </div>
@@ -411,7 +418,7 @@ export function AddSourceForm({
                 id="source-file-upload"
                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={handleFileChange}
-                disabled={isSubmitting}
+                disabled={isDisabled}
                 className="hidden"
               />
               {docFile ? (
@@ -428,7 +435,7 @@ export function AddSourceForm({
                   <button
                     type="button"
                     onClick={() => setDocFile(null)}
-                    disabled={isSubmitting}
+                    disabled={isDisabled}
                     className="p-1 text-[#8D99AE] hover:text-[#D90429] transition-colors"
                     title="Remove file"
                   >
@@ -458,7 +465,7 @@ export function AddSourceForm({
                 variant="ghost"
                 size="sm"
                 onClick={onCancel}
-                disabled={isSubmitting}
+                disabled={isDisabled}
               >
                 Cancel
               </NeuButton>
@@ -467,7 +474,7 @@ export function AddSourceForm({
               type="submit"
               variant="cta"
               size="sm"
-              disabled={isSubmitting || !docFile}
+              disabled={isDisabled || !docFile}
               icon={UploadCloud}
             >
               {isSubmitting ? 'Uploading & Extracting...' : 'Upload Document'}

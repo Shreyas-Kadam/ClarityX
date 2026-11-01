@@ -26,8 +26,9 @@ function formatTimestamp(timestamp) {
  * @param {Object} props.source - SourcePreviewResponse object
  * @param {Function} props.onDelete - Callback when delete is confirmed
  * @param {boolean} [props.isDeleting=false] - Whether this source is currently being deleted
+ * @param {boolean} [props.disabled=false] - Whether interactions are disabled (e.g. during active analysis)
  */
-export function SourceCard({ source, onDelete, isDeleting = false }) {
+export function SourceCard({ source, onDelete, isDeleting = false, disabled = false }) {
   const publishedFormatted = formatTimestamp(source.published_at)
   const accessedFormatted = formatTimestamp(source.accessed_at)
 
@@ -41,7 +42,7 @@ export function SourceCard({ source, onDelete, isDeleting = false }) {
   const TypeIcon = currentType.icon
 
   const handleDelete = () => {
-    if (isDeleting) return
+    if (isDeleting || disabled) return
     const sourceLabel = source.source_code ? `[${source.source_code}] ` : ''
     const titleLabel = source.title ? `"${source.title}"` : 'this source'
     if (window.confirm(`Are you sure you want to delete ${sourceLabel}${titleLabel}? This will permanently remove it from the research session.`)) {
@@ -93,7 +94,7 @@ export function SourceCard({ source, onDelete, isDeleting = false }) {
           variant="destructive"
           size="sm"
           onClick={handleDelete}
-          disabled={isDeleting}
+          disabled={isDeleting || disabled}
           icon={Trash2}
           title="Delete this source"
         >
