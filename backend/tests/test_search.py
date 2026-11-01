@@ -245,6 +245,29 @@ def test_normalize_url_empty_query_preserved():
     assert result == "https://example.com/page"
 
 
+def test_normalize_url_root_path_identical():
+    """Empty root path and '/' normalize identically to '/'."""
+    assert normalize_url("https://example.com") == normalize_url("https://example.com/") == "https://example.com/"
+
+
+def test_normalize_url_sorted_query_parameters():
+    """Query parameters are sorted deterministically regardless of input order."""
+    assert (
+        normalize_url("https://example.com?b=2&a=1")
+        == normalize_url("https://example.com?a=1&b=2")
+        == "https://example.com/?a=1&b=2"
+    )
+
+
+def test_normalize_url_sorted_multi_values():
+    """Multiple values for the same key are sorted deterministically."""
+    assert (
+        normalize_url("https://example.com?tag=math&tag=ai")
+        == normalize_url("https://example.com?tag=ai&tag=math")
+        == "https://example.com/?tag=ai&tag=math"
+    )
+
+
 # ---------------------------------------------------------------------------
 # deduplicate_urls tests
 # ---------------------------------------------------------------------------
@@ -1353,5 +1376,331 @@ async def test_api_search_success():
             assert result_data["sources"][0]["url"] == "https://example.com/result"
             assert "content_preview" in result_data["sources"][0]
             assert "extracted_content" not in result_data["sources"][0]
+
+
+# =============================================================================
+# PHASE 5.3.1: SAFETY HARDENING TESTS
+# =============================================================================
+
+from app.core.exceptions import ClarityXException, DatabaseConnectionError
+
+
+@pytest.mark.anyio
+async def test_count_sources_propagates_database_error():
+    """count_sources raises DatabaseConnectionError/ClarityXException instead of returning 0 on DB error."""
+    repo = SourceRepository()
+    mock_client = MagicMock()
+    mock_client.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception("DB down")
+
+    with patch.object(SourceRepository, "client", new_callable=lambda: property(lambda self: mock_client)):
+        with pytest.raises((DatabaseConnectionError, ClarityXException)):
+            await repo.count_sources("11111111-1111-1111-1111-111111111111")
+
+
+@pytest.mark.anyio
+async def test_get_session_urls_propagates_database_error():
+    """get_session_urls raises DatabaseConnectionError/ClarityXException instead of returning [] on DB error."""
+    repo = SourceRepository()
+    mock_client = MagicMock()
+    mock_client.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception("DB down")
+
+    with patch.object(SourceRepository, "client", new_callable=lambda: property(lambda self: mock_client)):
+        with pytest.raises((DatabaseConnectionError, ClarityXException)):
+            await repo.get_session_urls("11111111-1111-1111-1111-111111111111")
+
+
+@pytest.mark.anyio
+async def test_orchestrator_stops_when_count_query_fails():
+    """Orchestrator raises and stops before executing search when count_sources fails."""
+    mock_repo = MagicMock(spec=SourceRepository)
+    mock_repo.verify_session_ownership = AsyncMock(return_value=True)
+    mock_repo.count_sources = AsyncMock(side_effect=DatabaseConnectionError("Connection lost"))
+
+    mock_search = MagicMock(spec=DuckDuckGoSearchService)
+    mock_search.search = AsyncMock()
+
+    orchestrator = SearchOrchestrationService(source_repo=mock_repo, search_service=mock_search)
+
+    with pytest.raises(DatabaseConnectionError):
+        await orchestrator.search_and_persist_sources(
+            research_id=str(uuid4()),
+            user_id="user-123",
+            query="test",
+        )
+
+    mock_search.search.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_orchestrator_stops_when_existing_url_retrieval_fails():
+    """Orchestrator raises and stops before executing search when get_session_urls fails."""
+    mock_repo = MagicMock(spec=SourceRepository)
+    mock_repo.verify_session_ownership = AsyncMock(return_value=True)
+    mock_repo.count_sources = AsyncMock(return_value=0)
+    mock_repo.get_session_urls = AsyncMock(side_effect=DatabaseConnectionError("Connection lost"))
+
+    mock_search = MagicMock(spec=DuckDuckGoSearchService)
+    mock_search.search = AsyncMock()
+
+    orchestrator = SearchOrchestrationService(source_repo=mock_repo, search_service=mock_search)
+
+    with pytest.raises(DatabaseConnectionError):
+        await orchestrator.search_and_persist_sources(
+            research_id=str(uuid4()),
+            user_id="user-123",
+            query="test",
+        )
+
+    mock_search.search.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_orchestrator_stops_before_search_for_unauthorized_session():
+    """Orchestrator verifies ownership and raises 404 before counting sources, getting URLs, or searching."""
+    mock_repo = MagicMock(spec=SourceRepository)
+    mock_repo.verify_session_ownership = AsyncMock(return_value=False)
+    mock_repo.count_sources = AsyncMock()
+    mock_repo.get_session_urls = AsyncMock()
+
+    mock_search = MagicMock(spec=DuckDuckGoSearchService)
+    mock_search.search = AsyncMock()
+
+    orchestrator = SearchOrchestrationService(source_repo=mock_repo, search_service=mock_search)
+
+    with pytest.raises(ClarityXException) as exc_info:
+        await orchestrator.search_and_persist_sources(
+            research_id=str(uuid4()),
+            user_id="user-123",
+            query="test",
+        )
+
+    assert exc_info.value.status_code == 404
+    mock_repo.count_sources.assert_not_called()
+    mock_repo.get_session_urls.assert_not_called()
+    mock_search.search.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_orchestrator_persistence_failure_reported_accurately_after_success():
+    """Candidate 1 succeeds, Candidate 2 fails DB insertion: stats accurately reflect 1 persisted, 1 failed."""
+    session_id = str(uuid4())
+    mock_repo = MagicMock(spec=SourceRepository)
+    mock_repo.verify_session_ownership = AsyncMock(return_value=True)
+    mock_repo.count_sources = AsyncMock(return_value=0)
+    mock_repo.get_session_urls = AsyncMock(return_value=[])
+
+    record1 = make_persisted_source_record(session_id, "S1", title="Article 1", url="https://example.com/1")
+
+    async def mock_create(**kwargs):
+        if kwargs["url"] == "https://example.com/1":
+            return record1
+        raise ClarityXException(message="Database write timeout", status_code=500)
+
+    mock_repo.create_source = AsyncMock(side_effect=mock_create)
+
+    mock_search = MagicMock(spec=DuckDuckGoSearchService)
+    mock_search.search = AsyncMock(return_value=[
+        SearchResultItem(title="Article 1", url="https://example.com/1", snippet=""),
+        SearchResultItem(title="Article 2", url="https://example.com/2", snippet=""),
+    ])
+
+    async def mock_extract(url: str):
+        return WebsiteExtractionResult(
+            url=url,
+            title="Article",
+            extracted_content="Content text.",
+            extraction_status="success",
+        )
+
+    orchestrator = SearchOrchestrationService(
+        source_repo=mock_repo,
+        search_service=mock_search,
+        extraction_fn=mock_extract,
+    )
+
+    data = await orchestrator.search_and_persist_sources(
+        research_id=session_id,
+        user_id="user-123",
+        query="test query",
+    )
+
+    assert data.total_found == 2
+    assert data.attempted_count == 2
+    assert data.persisted_count == 1
+    assert data.failed_count == 1
+    assert len(data.sources) == 1
+    assert data.sources[0].url == "https://example.com/1"
+    assert len(data.failed) == 1
+    assert data.failed[0].url == "https://example.com/2"
+    assert "Database persistence failed" in data.failed[0].error
+
+
+@pytest.mark.anyio
+async def test_create_source_enforces_capacity_limit():
+    """create_source directly enforces MAX_SOURCES_PER_SESSION=5 before attempting insertion."""
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    with (
+        patch.object(repo, "verify_session_ownership", new_callable=AsyncMock) as mock_owner,
+        patch.object(repo, "count_sources", new_callable=AsyncMock) as mock_count,
+    ):
+        mock_owner.return_value = True
+        mock_count.return_value = 5  # Already has 5 sources
+
+        with pytest.raises(ClarityXException) as exc_info:
+            await repo.create_source(
+                session_id=session_id,
+                user_id=user_id,
+                source_type="website",
+                extracted_content="Test content",
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "capacity reached" in exc_info.value.message.lower()
+
+
+@pytest.mark.anyio
+async def test_orchestrator_sequential_capacity_cutoff():
+    """When session has 4 sources and 2 candidates are extracted, candidate 1 persists and candidate 2 is skipped with capacity_exceeded."""
+    session_id = str(uuid4())
+    mock_repo = MagicMock(spec=SourceRepository)
+    mock_repo.verify_session_ownership = AsyncMock(return_value=True)
+
+    # Initial count is 4. When candidate 1 persists, count becomes 5.
+    count_call_count = 0
+    async def mock_count_sources(sid):
+        nonlocal count_call_count
+        count_call_count += 1
+        # Initial pre-search check returns 4; persistence check 1 returns 4; persistence check 2 returns 5
+        if count_call_count <= 2:
+            return 4
+        return 5
+
+    mock_repo.count_sources = AsyncMock(side_effect=mock_count_sources)
+    mock_repo.get_session_urls = AsyncMock(return_value=[])
+
+    record1 = make_persisted_source_record(session_id, "S5", title="Article 1", url="https://example.com/1")
+    mock_repo.create_source = AsyncMock(return_value=record1)
+
+    mock_search = MagicMock(spec=DuckDuckGoSearchService)
+    mock_search.search = AsyncMock(return_value=[
+        SearchResultItem(title="Article 1", url="https://example.com/1", snippet=""),
+        SearchResultItem(title="Article 2", url="https://example.com/2", snippet=""),
+    ])
+
+    async def mock_extract(url: str):
+        return WebsiteExtractionResult(
+            url=url,
+            title="Article",
+            extracted_content="Content text.",
+            extraction_status="success",
+        )
+
+    orchestrator = SearchOrchestrationService(
+        source_repo=mock_repo,
+        search_service=mock_search,
+        extraction_fn=mock_extract,
+    )
+
+    data = await orchestrator.search_and_persist_sources(
+        research_id=session_id,
+        user_id="user-123",
+        query="test query",
+        max_results=5,
+    )
+
+    # Candidate 1 was persisted, candidate 2 was cut off by capacity check
+    assert data.persisted_count == 1
+    assert data.skipped_count == 1
+    assert data.skipped[0].reason == "capacity_exceeded"
+
+
+@pytest.mark.anyio
+async def test_orchestrator_handles_database_connection_error_during_persistence():
+    """DatabaseConnectionError during create_source is caught and reported as sanitized persistence failure."""
+    session_id = str(uuid4())
+    mock_repo = MagicMock(spec=SourceRepository)
+    mock_repo.verify_session_ownership = AsyncMock(return_value=True)
+    mock_repo.count_sources = AsyncMock(return_value=0)
+    mock_repo.get_session_urls = AsyncMock(return_value=[])
+    mock_repo.create_source = AsyncMock(
+        side_effect=DatabaseConnectionError("Unable to connect to the database")
+    )
+
+    mock_search = MagicMock(spec=DuckDuckGoSearchService)
+    mock_search.search = AsyncMock(return_value=[
+        SearchResultItem(title="Article 1", url="https://example.com/1", snippet=""),
+    ])
+
+    async def mock_extract(url: str):
+        return WebsiteExtractionResult(
+            url=url,
+            title="Article",
+            extracted_content="Content text.",
+            extraction_status="success",
+        )
+
+    orchestrator = SearchOrchestrationService(
+        source_repo=mock_repo,
+        search_service=mock_search,
+        extraction_fn=mock_extract,
+    )
+
+    data = await orchestrator.search_and_persist_sources(
+        research_id=session_id,
+        user_id="user-123",
+        query="test query",
+    )
+
+    assert data.persisted_count == 0
+    assert data.failed_count == 1
+    assert len(data.failed) == 1
+    assert "Database persistence failed" in data.failed[0].error
+    assert "Unable to connect to the database" in data.failed[0].error
+
+
+@pytest.mark.anyio
+async def test_orchestrator_raises_unexpected_exception_during_persistence():
+    """Unexpected programming error (e.g. RuntimeError) during persistence is re-raised to reach centralized handling."""
+    session_id = str(uuid4())
+    mock_repo = MagicMock(spec=SourceRepository)
+    mock_repo.verify_session_ownership = AsyncMock(return_value=True)
+    mock_repo.count_sources = AsyncMock(return_value=0)
+    mock_repo.get_session_urls = AsyncMock(return_value=[])
+    mock_repo.create_source = AsyncMock(
+        side_effect=RuntimeError("Unexpected serialization crash")
+    )
+
+    mock_search = MagicMock(spec=DuckDuckGoSearchService)
+    mock_search.search = AsyncMock(return_value=[
+        SearchResultItem(title="Article 1", url="https://example.com/1", snippet=""),
+    ])
+
+    async def mock_extract(url: str):
+        return WebsiteExtractionResult(
+            url=url,
+            title="Article",
+            extracted_content="Content text.",
+            extraction_status="success",
+        )
+
+    orchestrator = SearchOrchestrationService(
+        source_repo=mock_repo,
+        search_service=mock_search,
+        extraction_fn=mock_extract,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await orchestrator.search_and_persist_sources(
+            research_id=session_id,
+            user_id="user-123",
+            query="test query",
+        )
+
+    assert "Unexpected serialization crash" in str(exc_info.value)
+
+
 
 

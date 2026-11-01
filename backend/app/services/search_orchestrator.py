@@ -15,7 +15,7 @@ import logging
 from typing import Callable, List, Optional, Set
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ClarityXException
+from app.core.exceptions import ClarityXException, DatabaseConnectionError
 from app.database.repositories import SourceRepository
 from app.schemas.search import (
     FailedExtractionResult,
@@ -61,7 +61,21 @@ class SearchOrchestrationService:
         """Executes search discovery and persists eligible sources to the session."""
         max_capacity = self.settings.MAX_SOURCES_PER_SESSION
 
-        # 1. Enforce session source capacity before making external search requests
+        # 1. Enforce ownership defense-in-depth before querying or searching
+        is_owner = await self.source_repo.verify_session_ownership(research_id, user_id)
+        if not is_owner:
+            logger.warning(
+                "Unauthorized search discovery attempt: session %s not owned by user %s",
+                research_id,
+                user_id,
+            )
+            raise ClarityXException(
+                message="Research session not found or unauthorized",
+                status_code=404,
+                detail="The specified research session does not exist or does not belong to the authenticated user.",
+            )
+
+        # 2. Enforce session source capacity before making external search requests
         existing_count = await self.source_repo.count_sources(research_id)
         if existing_count >= max_capacity:
             raise ClarityXException(
@@ -72,13 +86,13 @@ class SearchOrchestrationService:
 
         remaining_capacity = max_capacity - existing_count
 
-        # 2. Fetch existing session URLs for deduplication
+        # 3. Fetch existing session URLs for deduplication
         existing_raw_urls = await self.source_repo.get_session_urls(research_id)
         stored_normalized_urls: Set[str] = {
             normalize_url(u) for u in existing_raw_urls if u
         }
 
-        # 3. Execute search provider (propagates SearchTimeoutError / SearchError)
+        # 4. Execute search provider (propagates SearchTimeoutError / SearchError)
         raw_results: List[SearchResultItem] = await self.search_service.search(
             query=query,
             max_results=max_results,
@@ -218,16 +232,39 @@ class SearchOrchestrationService:
                 continue
 
             # Persist source (only for success and partial statuses)
-            created = await self.source_repo.create_source(
-                session_id=research_id,
-                user_id=user_id,
-                source_type="website",
-                extracted_content=result.extracted_content,
-                title=result.title or candidate.title or "Untitled Source",
-                url=result.url or candidate.url,
-                published_at=result.published_at,
-                extraction_status=result.extraction_status,
-            )
+            try:
+                created = await self.source_repo.create_source(
+                    session_id=research_id,
+                    user_id=user_id,
+                    source_type="website",
+                    extracted_content=result.extracted_content,
+                    title=result.title or candidate.title or "Untitled Source",
+                    url=result.url or candidate.url,
+                    published_at=result.published_at,
+                    extraction_status=result.extraction_status,
+                )
+            except (ClarityXException, DatabaseConnectionError) as exc:
+                logger.warning(
+                    "Database persistence error for %s: %s",
+                    candidate.url,
+                    exc.message,
+                )
+                failed.append(
+                    FailedExtractionResult(
+                        url=candidate.url,
+                        title=candidate.title,
+                        error=f"Database persistence failed: {exc.message}",
+                    )
+                )
+                continue
+            except Exception as exc:
+                logger.error(
+                    "Unexpected error persisting source %s: %s",
+                    candidate.url,
+                    type(exc).__name__,
+                    exc_info=True,
+                )
+                raise
 
             if not created:
                 failed.append(

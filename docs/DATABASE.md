@@ -301,3 +301,16 @@ To decouple database operations and sanitize PostgREST errors, the backend provi
 - `BaseRepository`: Provides managed client access and translates raw PostgREST `APIError` into user-safe `ClarityXException` (HTTP 400) and connection issues into `DatabaseConnectionError` without leaking database traces or keys.
 - `ProfileRepository`: Handles user profile retrieval and updates.
 - `ResearchRepository`: Handles research session queries and pagination with ownership guarantees.
+- `SourceRepository`: Handles source persistence, sequential source-code allocation (`S1`, `S2`, ...), session ownership checks, source counting, URL listing, and 5-source capacity enforcement.
+
+### 13.4 Migration 002: Source Capacity Limit Enforcement (Phase 5.3.1)
+The PostgreSQL migration script is located at:
+`backend/app/database/migrations/002_enforce_source_capacity.sql`
+
+This migration provisions:
+- **Function**: `public.enforce_source_capacity_limit()`:
+  - Executes `PERFORM 1 FROM public.research_sessions WHERE id = NEW.research_id FOR UPDATE;` to lock the parent session row and serialize concurrent transactions targeting the same session.
+  - Queries `SELECT COUNT(*) FROM public.sources WHERE research_id = NEW.research_id;`.
+  - Raises a check violation exception if existing source count >= 5.
+- **Trigger**: `trg_enforce_source_capacity_limit` on `BEFORE INSERT ON public.sources FOR EACH ROW`.
+- **Application Steps**: Apply via Supabase Dashboard SQL Editor as documented in Section 13.2.

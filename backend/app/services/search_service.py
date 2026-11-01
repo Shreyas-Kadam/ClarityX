@@ -164,10 +164,12 @@ def normalize_url(url: str) -> str:
     Normalisations applied:
     - Scheme is lowercased.
     - Hostname is lowercased.
-    - Standard port for the scheme is omitted; non-standard ports are kept.
+    - Standard ports (80 for http, 443 for https) are omitted; non-standard ports are kept.
+    - Root path is normalized consistently: empty path '' and '/' both become '/'.
     - Fragment component is removed.
-    - Tracking-only query parameters (see :data:`TRACKING_PARAMS`) are stripped;
-      content-identifying parameters are preserved.
+    - Tracking-only query parameters (see :data:`TRACKING_PARAMS`) are stripped.
+    - Retained query parameters and multi-values are sorted deterministically.
+    - Content-identifying query parameters are preserved.
 
     This function does **not** perform SSRF validation – use
     :func:`is_valid_search_url` for that.
@@ -179,27 +181,39 @@ def normalize_url(url: str) -> str:
         The normalised URL string.
     """
     parsed = urlparse(url)
+    scheme = parsed.scheme.lower()
 
-    # Build a normalised netloc with lowercased hostname.
+    # Build a normalised netloc with lowercased hostname and stripped standard ports.
     hostname = (parsed.hostname or "").lower()
     port = parsed.port
     if port is not None:
-        normalised_netloc = f"{hostname}:{port}"
+        if (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
+            normalised_netloc = hostname
+        else:
+            normalised_netloc = f"{hostname}:{port}"
     else:
         normalised_netloc = hostname
 
-    # Strip tracking-only query parameters, preserve the rest.
+    # Normalize empty root path and '/' consistently to '/'
+    path = parsed.path
+    if not path or path == "/":
+        normalized_path = "/"
+    else:
+        normalized_path = path
+
+    # Strip tracking-only query parameters, sort retained keys and values deterministically.
     if parsed.query:
         qs = parse_qs(parsed.query, keep_blank_values=True)
-        filtered = {k: v for k, v in qs.items() if k.lower() not in TRACKING_PARAMS}
-        new_query = urlencode(filtered, doseq=True)
+        filtered = {k: sorted(v) for k, v in qs.items() if k.lower() not in TRACKING_PARAMS}
+        sorted_items = sorted(filtered.items())
+        new_query = urlencode(sorted_items, doseq=True)
     else:
         new_query = ""
 
     return urlunparse((
-        parsed.scheme.lower(),
+        scheme,
         normalised_netloc,
-        parsed.path,
+        normalized_path,
         parsed.params,
         new_query,
         "",  # fragment intentionally removed

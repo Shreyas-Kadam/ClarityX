@@ -328,9 +328,12 @@ class SourceRepository(BaseRepository):
                 .eq("research_id", session_id)
                 .execute()
             )
-            return response.count if response.count is not None else len(response.data or [])
+            if response.count is not None and isinstance(response.count, int):
+                return response.count
+            data = getattr(response, "data", None)
+            return len(data) if data and isinstance(data, list) else 0
         except Exception as exc:
-            logger.warning(f"Error counting sources for session {session_id}: {type(exc).__name__}")
+            self.handle_db_error("count_sources", exc)
             return 0
 
     async def get_session_urls(self, session_id: str) -> List[str]:
@@ -345,7 +348,7 @@ class SourceRepository(BaseRepository):
             rows = response.data or []
             return [str(row["url"]).strip() for row in rows if row.get("url")]
         except Exception as exc:
-            logger.warning(f"Error retrieving source URLs for session {session_id}: {type(exc).__name__}")
+            self.handle_db_error("get_session_urls", exc)
             return []
 
     async def create_source(
@@ -372,7 +375,16 @@ class SourceRepository(BaseRepository):
                 detail="The specified research session does not exist or does not belong to the authenticated user.",
             )
 
-        # 2. Validate input constraints
+        # 2. Enforce session source capacity (hard limit: 5 sources per research session)
+        current_count = await self.count_sources(session_id)
+        if current_count >= 5:
+            raise ClarityXException(
+                message="Source capacity reached",
+                status_code=400,
+                detail="Research session has reached the maximum capacity of 5 sources.",
+            )
+
+        # 3. Validate input constraints
         if source_type not in ALLOWED_SOURCE_TYPES:
             raise ClarityXException(
                 message=f"Invalid source_type '{source_type}'. Allowed types: {', '.join(sorted(ALLOWED_SOURCE_TYPES))}",
@@ -436,6 +448,14 @@ class SourceRepository(BaseRepository):
                             detail="Exhausted maximum retry attempts to resolve unique source code collision.",
                         )
                     continue
+
+                if "source capacity limit reached" in err_msg:
+                    raise ClarityXException(
+                        message="Source capacity reached",
+                        status_code=400,
+                        detail="Research session has reached the maximum capacity of 5 sources.",
+                    )
+
                 # Do NOT retry unrelated database errors
                 self.handle_db_error("create_source", exc)
                 return None
