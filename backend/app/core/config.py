@@ -98,6 +98,12 @@ class Settings:
         os.getenv("MAX_PDF_PAGES", "200")
     )
 
+    # Web Search Configuration (Phase 5)
+    SEARCH_PROVIDER: str = os.getenv("SEARCH_PROVIDER", "duckduckgo")
+    SEARCH_TIMEOUT: float = float(os.getenv("SEARCH_TIMEOUT", "10.0"))
+    MAX_SEARCH_RESULTS_PER_QUERY: int = int(os.getenv("MAX_SEARCH_RESULTS_PER_QUERY", "5"))
+    MAX_SOURCES_PER_SESSION: int = int(os.getenv("MAX_SOURCES_PER_SESSION", "5"))
+
     @property
     def is_supabase_configured(self) -> bool:
         """Checks whether valid Supabase configuration is present."""

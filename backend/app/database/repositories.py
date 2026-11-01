@@ -319,6 +319,35 @@ class SourceRepository(BaseRepository):
             self.handle_db_error("get_next_source_code", exc)
             return "S1"
 
+    async def count_sources(self, session_id: str) -> int:
+        """Counts total sources associated with a research session."""
+        try:
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("sources")
+                .select("id", count="exact")
+                .eq("research_id", session_id)
+                .execute()
+            )
+            return response.count if response.count is not None else len(response.data or [])
+        except Exception as exc:
+            logger.warning(f"Error counting sources for session {session_id}: {type(exc).__name__}")
+            return 0
+
+    async def get_session_urls(self, session_id: str) -> List[str]:
+        """Retrieves all non-null source URLs associated with a research session."""
+        try:
+            response = await anyio.to_thread.run_sync(
+                lambda: self.client.table("sources")
+                .select("url")
+                .eq("research_id", session_id)
+                .execute()
+            )
+            rows = response.data or []
+            return [str(row["url"]).strip() for row in rows if row.get("url")]
+        except Exception as exc:
+            logger.warning(f"Error retrieving source URLs for session {session_id}: {type(exc).__name__}")
+            return []
+
     async def create_source(
         self,
         session_id: str,

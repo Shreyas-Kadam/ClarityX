@@ -17,9 +17,10 @@ from app.core.exceptions import (
     ContentSizeExceededError,
     ExtractionError,
 )
-from app.database.repositories import SourceRepository
+from app.database.repositories import ResearchRepository, SourceRepository
 from app.dependencies.auth import get_current_user
 from app.schemas.auth import AuthenticatedUser
+from app.schemas.search import SearchSourceEnvelope, SearchSourceRequest
 from app.schemas.source import (
     PastedTextExtractRequest,
     SourceDeleteResponse,
@@ -34,6 +35,7 @@ from app.services.extraction_service import (
     extract_pasted_text,
     extract_website_content,
 )
+from app.services.search_orchestrator import SearchOrchestrationService
 
 logger = logging.getLogger("clarityx.sources.routes")
 settings = get_settings()
@@ -44,6 +46,11 @@ router = APIRouter(prefix="/api/research/{research_id}/sources", tags=["Sources"
 def get_source_repository() -> SourceRepository:
     """Dependency provider returning a SourceRepository instance."""
     return SourceRepository()
+
+
+def get_research_repository() -> ResearchRepository:
+    """Dependency provider returning a ResearchRepository instance."""
+    return ResearchRepository()
 
 
 def parse_and_validate_uuid(identifier: str, field_name: str = "research session ID") -> UUID:
@@ -256,6 +263,66 @@ async def add_document_source(
         success=True,
         message="Document source extracted and persisted successfully",
         data=SourceResponse.model_validate(created_source),
+    )
+
+
+@router.post(
+    "/search",
+    response_model=SearchSourceEnvelope,
+    status_code=status.HTTP_200_OK,
+    summary="Search and Add Sources",
+    description="Discovers web sources using search and extracts/persists them to the research session.",
+)
+async def search_and_add_sources(
+    research_id: str,
+    payload: Optional[SearchSourceRequest] = None,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    source_repo: SourceRepository = Depends(get_source_repository),
+    research_repo: ResearchRepository = Depends(get_research_repository),
+) -> SearchSourceEnvelope:
+    """Discovers web sources via search and persists eligible ones to the session."""
+    session_uuid = parse_and_validate_uuid(research_id, "research session ID")
+    user_id_str = str(current_user.id)
+
+    # 1. Verify session existence and user ownership
+    session = await research_repo.get_session_by_id(
+        session_id=str(session_uuid), user_id=user_id_str
+    )
+    if not session:
+        raise ClarityXException(
+            message="Research session not found or unauthorized",
+            status_code=404,
+            detail="The specified research session does not exist or does not belong to the authenticated user.",
+        )
+
+    # 2. Determine search query (use payload query if supplied; fallback to session research_goal)
+    req = payload or SearchSourceRequest()
+    query = (req.query or "").strip()
+    if not query:
+        query = (session.get("research_goal") or "").strip()
+
+    if not query:
+        raise ClarityXException(
+            message="Invalid search query",
+            status_code=400,
+            detail="A search query must be provided when the research goal is empty.",
+        )
+
+    # 3. Execute search discovery and persistence orchestration
+    orchestrator = SearchOrchestrationService(
+        source_repo=source_repo, settings=settings
+    )
+    data = await orchestrator.search_and_persist_sources(
+        research_id=str(session_uuid),
+        user_id=user_id_str,
+        query=query,
+        max_results=req.max_results,
+    )
+
+    return SearchSourceEnvelope(
+        success=True,
+        message="Search discovery completed successfully",
+        data=data,
     )
 
 

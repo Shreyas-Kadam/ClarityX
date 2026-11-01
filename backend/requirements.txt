@@ -49,3 +49,5 @@ trafilatura==2.3.1
 pypdf==6.21.4
 python-docx==1.2.0
 python-multipart==0.0.33
+ddgs==9.16.1
+primp==2.0.1
