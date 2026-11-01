@@ -19,6 +19,7 @@ import { NeuButton } from '@/components/common/NeuButton'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { getResearchById, deleteResearch, analyzeResearch } from '@/services/researchService'
 import { getSources, deleteSource } from '@/services/sourceService'
+import { updateVerificationStatus } from '@/services/verificationService'
 import { SourceCard } from '@/components/sources/SourceCard'
 import { AddSourceForm } from '@/components/sources/AddSourceForm'
 import {
@@ -26,6 +27,10 @@ import {
   FindingsOverview,
   FindingsFilter,
 } from '@/components/findings'
+import {
+  VerificationChecklist,
+  UnresolvedQuestionsList,
+} from '@/components/verification'
 
 /**
  * Safely formats an ISO timestamp or date string.
@@ -57,6 +62,8 @@ export function ResearchDetailPage() {
   const [sourceFeedback, setSourceFeedback] = useState({ error: '', success: '' })
   const [analysisFeedback, setAnalysisFeedback] = useState({ error: '', success: '' })
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [updatingTaskIds, setUpdatingTaskIds] = useState(new Set())
+  const [verificationFeedback, setVerificationFeedback] = useState({ error: '', success: '' })
 
   useEffect(() => {
     let isCancelled = false
@@ -247,6 +254,42 @@ export function ResearchDetailPage() {
     }
   }
 
+  const handleToggleTaskStatus = async (taskId, currentStatus) => {
+    if (updatingTaskIds.has(taskId)) return
+    const nextStatus = currentStatus === 'completed' ? 'pending' : 'completed'
+
+    setUpdatingTaskIds((prev) => new Set(prev).add(taskId))
+    setVerificationFeedback({ error: '', success: '' })
+
+    try {
+      const response = await updateVerificationStatus(taskId, nextStatus)
+      if (response?.data) {
+        setSession((prev) => {
+          if (!prev) return prev
+          const updatedItems = (prev.verification_items || []).map((item) =>
+            item.id === taskId ? response.data : item
+          )
+          return { ...prev, verification_items: updatedItems }
+        })
+      }
+    } catch (err) {
+      setVerificationFeedback({
+        error: err.message || 'Failed to update verification task status.',
+        success: '',
+      })
+    } finally {
+      setUpdatingTaskIds((prev) => {
+        const next = new Set(prev)
+        next.delete(taskId)
+        return next
+      })
+    }
+  }
+  const handleDismissVerificationFeedback = () => {
+    setVerificationFeedback({ error: '', success: '' })
+  }
+
+
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto p-12 text-center text-[#8D99AE] space-y-3">
@@ -288,8 +331,11 @@ export function ResearchDetailPage() {
   const sourcesCount = sources.length
   const findingsList = Array.isArray(session.findings) ? session.findings : []
   const findingsCount = findingsList.length
-  const verificationCount = session.verification_items?.length || 0
-  const unresolvedCount = session.unresolved_questions?.length || 0
+  const verificationList = Array.isArray(session.verification_items) ? session.verification_items : []
+  const verificationCount = verificationList.length
+  const completedVerificationCount = verificationList.filter((t) => t.status === 'completed').length
+  const unresolvedList = Array.isArray(session.unresolved_questions) ? session.unresolved_questions : []
+  const unresolvedCount = unresolvedList.length
   const isCompleted = session.status === 'completed'
 
   const categoryCounts = {
@@ -514,6 +560,19 @@ export function ResearchDetailPage() {
           Information Gaps
           <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-[#2B2D42]">
             {findingsCount}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('verification')}
+          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'verification'
+              ? 'border-[#D90429] text-[#D90429]'
+              : 'border-transparent text-[#8D99AE] hover:text-[#2B2D42]'
+          }`}
+        >
+          Verification Checklist
+          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-[#2B2D42]">
+            {verificationCount > 0 ? `${completedVerificationCount}/${verificationCount}` : '0'}
           </span>
         </button>
       </div>
@@ -895,6 +954,115 @@ export function ResearchDetailPage() {
                 )}
               </div>
             </GlassCard>
+          )}
+        </div>
+      )}
+
+      {/* Verification Checklist Tab */}
+      {activeTab === 'verification' && (
+        <div className="space-y-5">
+          {verificationList.length > 0 ? (
+            <VerificationChecklist
+              tasks={verificationList}
+              unresolvedQuestions={unresolvedList}
+              findings={findingsList}
+              onToggleTask={handleToggleTaskStatus}
+              updatingTaskIds={updatingTaskIds}
+              feedback={verificationFeedback}
+              onDismissFeedback={handleDismissVerificationFeedback}
+            />
+          ) : session.status === 'completed' ? (
+            /* Completed analysis with zero verification tasks */
+            <div className="space-y-5">
+              <GlassCard className="p-8 text-center space-y-4">
+                <div className="size-12 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-500/20">
+                  <CheckCircle className="size-6" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1.5">
+                  <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+                    No Verification Tasks Generated
+                  </h3>
+                  <p className="text-xs text-[#8D99AE] leading-relaxed">
+                    The AI analysis did not identify any actionable follow-up checklist tasks for this investigation.
+                  </p>
+                </div>
+              </GlassCard>
+
+              {/* Render unresolved questions if any exist */}
+              <UnresolvedQuestionsList questions={unresolvedList} />
+            </div>
+          ) : session.status === 'failed' ? (
+            /* Failed analysis state */
+            <GlassCard className="p-8 text-center space-y-4">
+              <div className="size-12 rounded-xl bg-[#EF233C]/10 text-[#D90429] flex items-center justify-center mx-auto border border-[#EF233C]/20">
+                <AlertCircle className="size-6" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1.5">
+                <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+                  Analysis Failed
+                </h3>
+                <p className="text-xs text-[#8D99AE] leading-relaxed">
+                  {analysisFeedback.error ||
+                    'AI information gap analysis could not be completed. Please check your source material and retry analysis.'}
+                </p>
+              </div>
+              <div className="pt-2">
+                <NeuButton
+                  variant="primary"
+                  size="sm"
+                  onClick={handleRunAnalysis}
+                  disabled={isAnalyzing || !hasUsableSources}
+                  icon={isAnalyzing ? RefreshCw : Sparkles}
+                >
+                  {isAnalyzing ? 'Analyzing...' : 'Retry Gap Analysis'}
+                </NeuButton>
+              </div>
+            </GlassCard>
+          ) : (
+            /* Analysis not yet completed */
+            <div className="space-y-5">
+              <GlassCard className="p-8 text-center space-y-4">
+                <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
+                  <Sparkles className="size-6" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1.5">
+                  <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+                    Analysis Not Yet Run
+                  </h3>
+                  <p className="text-xs text-[#8D99AE] leading-relaxed">
+                    Run Gap Analysis to generate an actionable verification checklist and identify unresolved research questions.
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-wrap justify-center gap-3">
+                  {hasUsableSources ? (
+                    <NeuButton
+                      variant="primary"
+                      size="sm"
+                      onClick={handleRunAnalysis}
+                      disabled={isAnalyzing}
+                      icon={isAnalyzing ? RefreshCw : Sparkles}
+                    >
+                      {isAnalyzing ? 'Analyzing...' : 'Run Gap Analysis'}
+                    </NeuButton>
+                  ) : (
+                    <NeuButton
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTab('sources')
+                        setShowAddSource(true)
+                      }}
+                      icon={Plus}
+                    >
+                      Add Source Material
+                    </NeuButton>
+                  )}
+                </div>
+              </GlassCard>
+
+              {/* Render unresolved questions if any exist */}
+              <UnresolvedQuestionsList questions={unresolvedList} />
+            </div>
           )}
         </div>
       )}
