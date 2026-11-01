@@ -91,15 +91,8 @@ export function Sidebar({ onClose, isMobile = false }) {
         )}
       </div>
 
-      {/* Philosophy banner */}
-      <div className="px-6 py-4 mx-3 my-3 rounded-xl bg-white/5 border border-white/5">
-        <p className="text-[11px] font-medium text-[#8D99AE] italic leading-relaxed">
-          &ldquo;Don&apos;t just tell users what you found. Tell them what you haven&apos;t found.&rdquo;
-        </p>
-      </div>
-
       {/* Navigation */}
-      <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
         <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-[#8D99AE]/70 uppercase">
           Workspace
         </div>

@@ -225,3 +225,55 @@
   box-shadow: inset 2px 2px 6px rgba(18, 19, 30, 0.6),
               inset -2px -2px 6px rgba(65, 68, 98, 0.18);
 }
+
+/* =============================================================================
+   DEDICATED PRINT STYLES FOR OFFICIAL RESEARCH ASSESSMENT EXPORT
+   ============================================================================= */
+@page {
+  size: A4 portrait;
+  margin: 12mm 12mm 12mm 12mm;
+}
+
+@media print {
+  html, body, #root {
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+  }
+
+  aside,
+  header,
+  nav,
+  button,
+  [data-print-hidden="true"] {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    max-width: 100% !important;
+  }
+
+  .break-inside-avoid,
+  .print-break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .break-after-avoid,
+  .print-break-after-avoid {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

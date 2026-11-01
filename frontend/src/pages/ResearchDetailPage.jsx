@@ -13,6 +13,7 @@ import {
   X,
   Globe,
   Filter,
+  Printer,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
@@ -31,6 +32,7 @@ import {
   VerificationChecklist,
   UnresolvedQuestionsList,
 } from '@/components/verification'
+import { ResearchConclusionPrint } from '@/components/research/ResearchConclusionPrint'
 
 /**
  * Safely formats an ISO timestamp or date string.
@@ -337,6 +339,7 @@ export function ResearchDetailPage() {
   const unresolvedList = Array.isArray(session.unresolved_questions) ? session.unresolved_questions : []
   const unresolvedCount = unresolvedList.length
   const isCompleted = session.status === 'completed'
+  const hasReport = isCompleted || findingsCount > 0 || Boolean(session.summary?.trim())
 
   const categoryCounts = {
     all: findingsList.length,
@@ -352,20 +355,35 @@ export function ResearchDetailPage() {
       : findingsList.filter((f) => (f.category || '').toLowerCase() === selectedCategory)
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Top Navigation & Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <Link
-          to="/history"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8D99AE] hover:text-[#2B2D42]"
-        >
-          <ArrowLeft className="size-4" />
-          Back to History
-        </Link>
+    <>
+      <div className="max-w-5xl mx-auto space-y-6 print:hidden">
+        {/* Top Navigation & Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <Link
+            to="/history"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8D99AE] hover:text-[#2B2D42]"
+          >
+            <ArrowLeft className="size-4" />
+            Back to History
+          </Link>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Primary CTA: Run / Re-run AI Gap Analysis */}
-          <NeuButton
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Print Conclusion Action */}
+            {hasReport && (
+              <NeuButton
+                variant="secondary"
+                size="sm"
+                onClick={() => window.print()}
+                disabled={isAnalyzing || isDeleting}
+                icon={Printer}
+                title="Print or export professional research conclusion as PDF"
+              >
+                Print Conclusion
+              </NeuButton>
+            )}
+
+            {/* Primary CTA: Run / Re-run AI Gap Analysis */}
+            <NeuButton
             variant="cta"
             size="sm"
             onClick={handleRunAnalysis}
@@ -513,9 +531,23 @@ export function ResearchDetailPage() {
 
         {/* Summary Card */}
         <div className="p-5 rounded-2xl neu-inset space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#2B2D42]">
-            <Sparkles className="size-4 text-[#D90429]" />
-            Session Analytical Summary
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#2B2D42]">
+              <Sparkles className="size-4 text-[#D90429]" />
+              Session Analytical Summary
+            </div>
+            {hasReport && (
+              <NeuButton
+                variant="ghost"
+                size="sm"
+                onClick={() => window.print()}
+                icon={Printer}
+                className="text-xs"
+                title="Print or export research conclusion as PDF"
+              >
+                Print Conclusion
+              </NeuButton>
+            )}
           </div>
           <p className="text-sm text-[#2B2D42] leading-relaxed">
             {session.summary?.trim() ||
@@ -1066,6 +1098,10 @@ export function ResearchDetailPage() {
           )}
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Dedicated Print-Only Assessment Document */}
+      <ResearchConclusionPrint session={session} sources={sources} />
+    </>
   )
 }
