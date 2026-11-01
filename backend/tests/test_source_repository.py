@@ -676,3 +676,287 @@ def test_make_content_preview_251_chars():
 
 def test_make_content_preview_empty_content():
     assert make_content_preview("") == ""
+
+
+# =============================================================================
+# 6. RAW SOURCE RETRIEVAL TESTS (Phase 6.3.4.1)
+# =============================================================================
+
+
+@pytest.mark.anyio
+async def test_get_raw_sources_by_session_success(mock_supabase):
+    """Successfully retrieves all raw sources with full extracted_content and required fields."""
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    # 1. Mock ownership check on research_sessions
+    mock_sessions = MagicMock()
+    mock_sessions.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": session_id}
+    ]
+
+    raw_data = [
+        {
+            "id": str(uuid4()),
+            "research_id": session_id,
+            "source_code": "S1",
+            "title": "Source One",
+            "url": "https://example.com/one",
+            "source_type": "website",
+            "extracted_content": "Extracted content for S1. " * 30,
+            "published_at": None,
+            "accessed_at": datetime.now(timezone.utc).isoformat(),
+            "extraction_status": "success",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": str(uuid4()),
+            "research_id": session_id,
+            "source_code": "S2",
+            "title": "Source Two",
+            "url": None,
+            "source_type": "pasted_text",
+            "extracted_content": "Pasted notes for S2. " * 20,
+            "published_at": None,
+            "accessed_at": datetime.now(timezone.utc).isoformat(),
+            "extraction_status": "success",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    ]
+
+    mock_sources = MagicMock()
+    mock_order = MagicMock()
+    mock_sources.select.return_value.eq.return_value.order.return_value = mock_order
+    mock_response = MagicMock()
+    mock_response.data = raw_data
+    mock_order.execute.return_value = mock_response
+
+    def table_router(table_name):
+        if table_name == "research_sessions":
+            return mock_sessions
+        return mock_sources
+
+    mock_supabase.table.side_effect = table_router
+
+    results = await repo.get_raw_sources_by_session(session_id, user_id)
+
+    assert len(results) == 2
+    assert results[0]["source_code"] == "S1"
+    assert results[0]["extracted_content"] == raw_data[0]["extracted_content"]
+    assert results[1]["source_code"] == "S2"
+    assert results[1]["extracted_content"] == raw_data[1]["extracted_content"]
+    assert "content_preview" not in results[0]
+
+
+@pytest.mark.anyio
+async def test_get_raw_sources_by_session_ownership_rejection(mock_supabase):
+    """Rejects retrieval with HTTP 404 when session ownership verification fails."""
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    # Mock ownership check failure
+    mock_sessions = MagicMock()
+    mock_sessions.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    mock_supabase.table.return_value = mock_sessions
+
+    with pytest.raises(ClarityXException) as exc_info:
+        await repo.get_raw_sources_by_session(session_id, user_id)
+
+    assert exc_info.value.status_code == 404
+    assert "not found or unauthorized" in exc_info.value.message.lower()
+
+
+@pytest.mark.anyio
+async def test_get_raw_sources_by_session_empty_list(mock_supabase):
+    """Returns an empty list when session has no sources."""
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    mock_sessions = MagicMock()
+    mock_sessions.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": session_id}
+    ]
+
+    mock_sources = MagicMock()
+    mock_order = MagicMock()
+    mock_sources.select.return_value.eq.return_value.order.return_value = mock_order
+    mock_response = MagicMock()
+    mock_response.data = []
+    mock_order.execute.return_value = mock_response
+
+    def table_router(table_name):
+        if table_name == "research_sessions":
+            return mock_sessions
+        return mock_sources
+
+    mock_supabase.table.side_effect = table_router
+
+    results = await repo.get_raw_sources_by_session(session_id, user_id)
+
+    assert results == []
+
+
+@pytest.mark.anyio
+async def test_get_raw_sources_by_session_deterministic_ordering(mock_supabase):
+    """Ensures query orders deterministically by source_code ascending."""
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    mock_sessions = MagicMock()
+    mock_sessions.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": session_id}
+    ]
+
+    mock_sources = MagicMock()
+    mock_select = MagicMock()
+    mock_eq = MagicMock()
+    mock_order = MagicMock()
+
+    mock_sources.select.return_value = mock_select
+    mock_select.eq.return_value = mock_eq
+    mock_eq.order.return_value = mock_order
+    mock_response = MagicMock()
+    mock_response.data = [
+        {"source_code": "S1", "extracted_content": "Content 1"},
+        {"source_code": "S2", "extracted_content": "Content 2"},
+    ]
+    mock_order.execute.return_value = mock_response
+
+    def table_router(table_name):
+        if table_name == "research_sessions":
+            return mock_sessions
+        return mock_sources
+
+    mock_supabase.table.side_effect = table_router
+
+    results = await repo.get_raw_sources_by_session(session_id, user_id)
+
+    mock_select.eq.assert_called_once_with("research_id", session_id)
+    mock_eq.order.assert_called_once_with("source_code", desc=False)
+    assert len(results) == 2
+    assert [r["source_code"] for r in results] == ["S1", "S2"]
+
+
+@pytest.mark.anyio
+async def test_get_raw_sources_by_session_extracted_content_available_internally(mock_supabase):
+    """Verifies full raw extracted_content is preserved and not truncated to 250 characters."""
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    mock_sessions = MagicMock()
+    mock_sessions.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": session_id}
+    ]
+
+    long_content = "X" * 15000  # Much longer than preview threshold
+    mock_sources = MagicMock()
+    mock_order = MagicMock()
+    mock_sources.select.return_value.eq.return_value.order.return_value = mock_order
+    mock_response = MagicMock()
+    mock_response.data = [
+        {
+            "id": str(uuid4()),
+            "research_id": session_id,
+            "source_code": "S1",
+            "title": "Long Source",
+            "url": "https://example.com",
+            "source_type": "website",
+            "extracted_content": long_content,
+            "extraction_status": "success",
+        }
+    ]
+    mock_order.execute.return_value = mock_response
+
+    def table_router(table_name):
+        if table_name == "research_sessions":
+            return mock_sessions
+        return mock_sources
+
+    mock_supabase.table.side_effect = table_router
+
+    results = await repo.get_raw_sources_by_session(session_id, user_id)
+
+    assert len(results) == 1
+    assert len(results[0]["extracted_content"]) == 15000
+    assert results[0]["extracted_content"] == long_content
+
+
+@pytest.mark.anyio
+async def test_get_raw_sources_by_session_database_errors_handled(mock_supabase):
+    """Translates database APIError to ClarityXException(400) and connection errors to 503."""
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    # 1. APIError (e.g. Postgres syntax / schema error)
+    mock_sessions = MagicMock()
+    mock_sessions.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": session_id}
+    ]
+
+    mock_sources = MagicMock()
+    mock_order = MagicMock()
+    mock_sources.select.return_value.eq.return_value.order.return_value = mock_order
+    mock_order.execute.side_effect = APIError({"message": "relation does not exist", "code": "42P01"})
+
+    def table_router(table_name):
+        if table_name == "research_sessions":
+            return mock_sessions
+        return mock_sources
+
+    mock_supabase.table.side_effect = table_router
+
+    with pytest.raises(ClarityXException) as exc_info:
+        await repo.get_raw_sources_by_session(session_id, user_id)
+
+    assert exc_info.value.status_code == 400
+    assert "failed during get_raw_sources_by_session" in exc_info.value.message
+
+    # 2. Connection failure -> DatabaseConnectionError (503)
+    mock_order.execute.side_effect = ConnectionError("Network unreachable")
+
+    with pytest.raises(DatabaseConnectionError) as exc_info:
+        await repo.get_raw_sources_by_session(session_id, user_id)
+
+    assert exc_info.value.status_code == 503
+    assert "Unable to complete database operation" in exc_info.value.message
+
+
+@pytest.mark.anyio
+async def test_get_raw_sources_by_session_async_thread_offloaded(mock_supabase):
+    """Verifies synchronous database call is offloaded via anyio.to_thread.run_sync."""
+    import anyio
+
+    repo = SourceRepository()
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    mock_sessions = MagicMock()
+    mock_sessions.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": session_id}
+    ]
+
+    mock_sources = MagicMock()
+    mock_order = MagicMock()
+    mock_sources.select.return_value.eq.return_value.order.return_value = mock_order
+    mock_response = MagicMock()
+    mock_response.data = [{"source_code": "S1", "extracted_content": "Content"}]
+    mock_order.execute.return_value = mock_response
+
+    def table_router(table_name):
+        if table_name == "research_sessions":
+            return mock_sessions
+        return mock_sources
+
+    mock_supabase.table.side_effect = table_router
+
+    with patch("anyio.to_thread.run_sync", wraps=anyio.to_thread.run_sync) as spy_run_sync:
+        results = await repo.get_raw_sources_by_session(session_id, user_id)
+        assert len(results) == 1
+        assert spy_run_sync.called
+

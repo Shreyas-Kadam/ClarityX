@@ -599,6 +599,45 @@ class SourceRepository(BaseRepository):
             self.handle_db_error("delete_source", exc)
             return False
 
+    async def get_raw_sources_by_session(
+        self,
+        session_id: str,
+        user_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Retrieves raw sources including full extracted_content for AI analysis,
+        verifying session ownership and ordering deterministically by source_code ascending.
+        """
+        # 1. Enforce ownership: session must belong to user
+        is_owner = await self.verify_session_ownership(session_id, user_id)
+        if not is_owner:
+            logger.warning(
+                f"Unauthorized raw source access attempt: session {session_id} not owned by user {user_id}"
+            )
+            raise ClarityXException(
+                message="Research session not found or unauthorized",
+                status_code=404,
+                detail="The specified research session does not exist or does not belong to the authenticated user.",
+            )
+
+        try:
+            def _build_and_run():
+                query = (
+                    self.client.table("sources")
+                    .select(
+                        "id, research_id, source_code, title, url, source_type, "
+                        "extracted_content, published_at, accessed_at, extraction_status, created_at"
+                    )
+                    .eq("research_id", session_id)
+                    .order("source_code", desc=False)
+                )
+                return query.execute()
+
+            response = await anyio.to_thread.run_sync(_build_and_run)
+            return response.data or []
+        except Exception as exc:
+            self.handle_db_error("get_raw_sources_by_session", exc)
+            return []
+
 
 class FindingRepository(BaseRepository):
     """Repository managing information gap findings."""
