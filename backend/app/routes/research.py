@@ -148,37 +148,37 @@ async def list_research_sessions(
 
 @router.get(
     "/{research_id}",
-    response_model=ResearchSessionEnvelope,
-    summary="Get Research Session",
-    description="Retrieves a specific research session verifying user ownership.",
+    response_model=ResearchReportEnvelope,
+    summary="Get Research Report",
+    description="Retrieves the complete research report including findings, evidence, verification items, unresolved questions, and sources, verifying user ownership.",
 )
 async def get_research_session(
     research_id: str,
     current_user: AuthenticatedUser = Depends(get_current_user),
     repo: ResearchRepository = Depends(get_research_repository),
-) -> ResearchSessionEnvelope:
-    """Retrieves a research session by ID.
+) -> ResearchReportEnvelope:
+    """Retrieves a complete research report by research ID.
 
     If the session does not exist or belongs to another user, returns HTTP 404.
     """
     session_uuid = parse_and_validate_uuid(research_id)
     user_id_str = str(current_user.id)
 
-    session = await repo.get_session_by_id(
+    report_data = await repo.get_research_report(
         session_id=str(session_uuid),
         user_id=user_id_str,
     )
 
-    if not session:
+    if not report_data:
         raise ClarityXException(
             message="Research session not found",
             status_code=404,
             detail="The requested research session was not found.",
         )
 
-    return ResearchSessionEnvelope(
+    return ResearchReportEnvelope(
         success=True,
-        data=ResearchSessionResponse.model_validate(session),
+        data=report_data,
     )
 
 

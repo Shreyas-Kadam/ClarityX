@@ -7,6 +7,7 @@ standardizing error translation and preventing secret leakage.
 
 import logging
 import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import anyio
@@ -20,9 +21,17 @@ from app.schemas.analysis import (
     ALLOWED_SEVERITIES,
     LLMVerificationItem,
 )
+from app.schemas.research import (
+    EvidenceReferenceResponse,
+    FindingResponse,
+    ResearchReportData,
+    UnresolvedQuestionResponse,
+    VerificationItemResponse,
+)
 from app.schemas.source import (
     ALLOWED_EXTRACTION_STATUSES,
     ALLOWED_SOURCE_TYPES,
+    SourcePreviewResponse,
     make_content_preview,
 )
 
@@ -159,6 +168,42 @@ class ProfileRepository(BaseRepository):
 
 class ResearchRepository(BaseRepository):
     """Repository managing research sessions and related entities."""
+
+    def __init__(
+        self,
+        finding_repo: Optional[Any] = None,
+        evidence_repo: Optional[Any] = None,
+        verification_repo: Optional[Any] = None,
+        source_repo: Optional[Any] = None,
+    ):
+        self._finding_repo = finding_repo
+        self._evidence_repo = evidence_repo
+        self._verification_repo = verification_repo
+        self._source_repo = source_repo
+
+    @property
+    def finding_repo(self) -> "FindingRepository":
+        if self._finding_repo is None:
+            self._finding_repo = FindingRepository()
+        return self._finding_repo
+
+    @property
+    def evidence_repo(self) -> "EvidenceReferenceRepository":
+        if self._evidence_repo is None:
+            self._evidence_repo = EvidenceReferenceRepository()
+        return self._evidence_repo
+
+    @property
+    def verification_repo(self) -> "VerificationRepository":
+        if self._verification_repo is None:
+            self._verification_repo = VerificationRepository()
+        return self._verification_repo
+
+    @property
+    def source_repo(self) -> "SourceRepository":
+        if self._source_repo is None:
+            self._source_repo = SourceRepository()
+        return self._source_repo
 
     async def create_session(
         self, user_id: str, research_goal: str
@@ -298,6 +343,76 @@ class ResearchRepository(BaseRepository):
         except Exception as exc:
             self.handle_db_error("delete_session", exc)
             return False
+
+    async def get_research_report(
+        self, session_id: str, user_id: str
+    ) -> Optional[ResearchReportData]:
+        """Aggregates findings, evidence, verification tasks, and sources into a complete report.
+
+        Returns None if the session does not exist or does not belong to the user.
+        Preserves database IDs, timestamps, completed verification status, and evidence source codes.
+        Guarantees that raw extracted_content is never included in report output.
+        """
+        # 1. Retrieve session and enforce ownership
+        session = await self.get_session_by_id(session_id, user_id)
+        if not session:
+            return None
+
+        # 2. Retrieve findings
+        findings_raw = await self.finding_repo.get_findings_by_session(session_id, user_id)
+
+        # 3. Retrieve evidence references for all findings
+        finding_ids = [str(f["id"]) for f in findings_raw if f.get("id")]
+        if finding_ids:
+            evidence_raw = await self.evidence_repo.get_evidence_for_findings(
+                finding_ids, session_id, user_id
+            )
+        else:
+            evidence_raw = []
+
+        # 4. Group evidence references by finding_id
+        evidence_by_finding: Dict[str, List[EvidenceReferenceResponse]] = defaultdict(list)
+        for ev in evidence_raw:
+            ev_model = EvidenceReferenceResponse.model_validate(ev)
+            f_id_key = str(ev.get("finding_id"))
+            evidence_by_finding[f_id_key].append(ev_model)
+
+        # 5. Nest evidence under findings
+        findings_list: List[FindingResponse] = []
+        for f in findings_raw:
+            f_id_key = str(f["id"])
+            f_dict = dict(f)
+            f_dict["evidence_references"] = evidence_by_finding.get(f_id_key, [])
+            findings_list.append(FindingResponse.model_validate(f_dict))
+
+        # 6. Retrieve verification items and partition into unresolved questions & checklist items
+        verification_raw = await self.verification_repo.list_items_by_session(session_id, user_id)
+        unresolved_questions: List[UnresolvedQuestionResponse] = []
+        verification_items: List[VerificationItemResponse] = []
+        for item in verification_raw:
+            if item.get("finding_id") is None:
+                unresolved_questions.append(UnresolvedQuestionResponse.model_validate(item))
+            else:
+                verification_items.append(VerificationItemResponse.model_validate(item))
+
+        # 7. Retrieve sources with previews (extracted_content stripped)
+        sources_dict = await self.source_repo.list_sources(session_id, user_id, limit=100)
+        sources_raw = sources_dict.get("sources", [])
+        sources_list: List[SourcePreviewResponse] = [
+            SourcePreviewResponse.model_validate(s) for s in sources_raw
+        ]
+
+        # 8. Assemble and return ResearchReportData
+        return ResearchReportData(
+            research_id=session["id"],
+            research_goal=session["research_goal"],
+            status=session["status"],
+            summary=session.get("summary") or "",
+            findings=findings_list,
+            sources=sources_list,
+            unresolved_questions=unresolved_questions,
+            verification_items=verification_items,
+        )
 
 
 class SourceRepository(BaseRepository):
