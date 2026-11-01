@@ -8,12 +8,26 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle,
-  Layers,
+  FileText,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { getResearchById, deleteResearch } from '@/services/researchService'
+
+/**
+ * Safely formats an ISO timestamp or date string.
+ * Returns null if the timestamp is missing, empty, or invalid, preventing "Invalid Date" output.
+ *
+ * @param {string|null|undefined} timestamp
+ * @returns {string|null}
+ */
+function formatTimestamp(timestamp) {
+  if (!timestamp) return null
+  const date = new Date(timestamp)
+  if (isNaN(date.getTime())) return null
+  return date.toLocaleString()
+}
 
 export function ResearchDetailPage() {
   const { id } = useParams()
@@ -34,7 +48,12 @@ export function ResearchDetailPage() {
         if (isCancelled) return
 
         if (response?.data) {
-          setSession(response.data)
+          // Normalize research ID: session list uses `id`, report data uses `research_id`
+          const normalized = {
+            ...response.data,
+            id: response.data.research_id || response.data.id || id,
+          }
+          setSession(normalized)
         } else {
           setErrorMsg('Research session record was empty.')
         }
@@ -71,7 +90,7 @@ export function ResearchDetailPage() {
 
     setIsDeleting(true)
     try {
-      await deleteResearch(id)
+      await deleteResearch(session?.id || id)
       navigate('/history', { replace: true })
     } catch (err) {
       alert(`Failed to delete research session: ${err.message}`)
@@ -115,6 +134,13 @@ export function ResearchDetailPage() {
     )
   }
 
+  const createdFormatted = formatTimestamp(session.created_at)
+  const updatedFormatted = formatTimestamp(session.updated_at)
+  const sourcesCount = session.sources?.length || 0
+  const findingsCount = session.findings?.length || 0
+  const verificationCount = session.verification_items?.length || 0
+  const unresolvedCount = session.unresolved_questions?.length || 0
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Top Navigation & Actions */}
@@ -150,17 +176,21 @@ export function ResearchDetailPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-[#8D99AE]">
-            <span className="flex items-center gap-1">
-              <Clock className="size-3.5 text-[#8D99AE]" />
-              Created: {new Date(session.created_at).toLocaleString()}
-            </span>
-            {session.updated_at && (
-              <span>
-                Updated: {new Date(session.updated_at).toLocaleString()}
-              </span>
-            )}
-          </div>
+          {(createdFormatted || updatedFormatted) && (
+            <div className="flex items-center gap-3 text-xs text-[#8D99AE]">
+              {createdFormatted && (
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3.5 text-[#8D99AE]" />
+                  Created: {createdFormatted}
+                </span>
+              )}
+              {updatedFormatted && (
+                <span>
+                  Updated: {updatedFormatted}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -179,8 +209,8 @@ export function ResearchDetailPage() {
             Session Analytical Summary
           </div>
           <p className="text-sm text-[#2B2D42] leading-relaxed">
-            {session.summary ||
-              'Analytical summary pending source ingestion and AI gap detection evaluation.'}
+            {session.summary?.trim() ||
+              'No analytical summary available. Ingest sources and run AI gap analysis to evaluate digital dark spots.'}
           </p>
         </div>
       </GlassCard>
@@ -231,7 +261,7 @@ export function ResearchDetailPage() {
           <GlassCard className="p-5 space-y-3">
             <h3 className="font-heading font-semibold text-sm text-[#2B2D42] flex items-center gap-2">
               <CheckCircle className="size-4 text-emerald-600" />
-              Database Record Lifecycle
+              Investigation Overview
             </h3>
             <div className="space-y-2 text-xs text-[#8D99AE]">
               <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
@@ -243,28 +273,55 @@ export function ResearchDetailPage() {
                 <span className="font-mono text-[11px] text-[#2B2D42]">{session.id}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
-                <span>Owner User ID</span>
-                <span className="font-mono text-[11px] text-[#2B2D42]">{session.user_id}</span>
+                <span>Ingested Sources</span>
+                <span className="font-semibold text-[#2B2D42]">{sourcesCount}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span>Database Table</span>
-                <span className="font-mono text-[#2B2D42]">research_sessions</span>
+                <span>Detected Information Gaps</span>
+                <span className="font-semibold text-[#2B2D42]">{findingsCount}</span>
               </div>
             </div>
           </GlassCard>
 
           <GlassCard className="p-5 space-y-3">
             <h3 className="font-heading font-semibold text-sm text-[#2B2D42] flex items-center gap-2">
-              <Layers className="size-4 text-[#D90429]" />
-              Analysis Pipeline Next Steps
+              <FileText className="size-4 text-[#D90429]" />
+              Analysis Scope & Verification
             </h3>
-            <p className="text-xs text-[#8D99AE] leading-relaxed">
-              In Phase V, website extraction and document ingestion services will attach source text to this session. In Phase VI, the AI engine will parse that content to populate the 4 gap categories.
-            </p>
+            <div className="space-y-2 text-xs text-[#8D99AE]">
+              <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
+                <span>Verification Checklist Tasks</span>
+                <span className="font-semibold text-[#2B2D42]">{verificationCount}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#8D99AE]/10">
+                <span>Unresolved Research Questions</span>
+                <span className="font-semibold text-[#2B2D42]">{unresolvedCount}</span>
+              </div>
+              <div className="pt-2 text-xs text-[#8D99AE] leading-relaxed">
+                {session.status === 'completed' ? (
+                  <span className="text-emerald-700 font-medium">
+                    AI gap detection has been completed for this investigation. Review the Information Gaps tab for categorized findings and verified evidence quotes.
+                  </span>
+                ) : session.status === 'processing' ? (
+                  <span className="text-amber-700 font-medium">
+                    AI analysis is currently evaluating source material.
+                  </span>
+                ) : session.status === 'failed' ? (
+                  <span className="text-[#D90429] font-medium">
+                    Analysis could not be completed. Check source validity and retry.
+                  </span>
+                ) : (
+                  <span>
+                    Investigation initialized. Attach source material to expose missing facts, outdated claims, conflicting data, and unverified statements.
+                  </span>
+                )}
+              </div>
+            </div>
           </GlassCard>
         </div>
       )}
 
+      {/* Findings Tab Placeholder (to be unlocked in Step 2.4) */}
       {activeTab === 'findings' && (
         <GlassCard className="p-8 text-center space-y-4">
           <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
@@ -281,6 +338,7 @@ export function ResearchDetailPage() {
         </GlassCard>
       )}
 
+      {/* Sources Tab Placeholder (to be unlocked in Step 2.2) */}
       {activeTab === 'sources' && (
         <GlassCard className="p-8 text-center space-y-4">
           <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
