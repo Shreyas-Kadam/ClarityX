@@ -190,6 +190,17 @@ class AnalysisPersistenceService:
                 "status": "pending",
             })
 
+        for item in getattr(analysis, "unresolved_questions", []):
+            task_text = (item.task or "").strip()
+            if any(v["finding_id"] is None and v["task"] == task_text for v in verification_payload):
+                continue
+            verification_payload.append({
+                "id": str(uuid4()),
+                "finding_id": None,
+                "task": task_text,
+                "status": "pending",
+            })
+
         # 4. Construct RPC payload
         rpc_payload = {
             "p_session_id": session_id_str,

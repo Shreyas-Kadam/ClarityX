@@ -402,6 +402,50 @@ async def test_general_unresolved_questions_with_null_finding_id(sample_analysis
     assert general_task["finding_id"] is None
 
 
+@pytest.mark.anyio
+async def test_unresolved_questions_field_mapped_to_null_finding_id(sample_analysis):
+    """Items in analysis.unresolved_questions are persisted with finding_id = None."""
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+
+    mock_client = MagicMock()
+    captured_payload = {}
+
+    def rpc_side_effect(fn_name, payload):
+        nonlocal captured_payload
+        captured_payload = payload
+        call_mock = MagicMock()
+        call_mock.execute.return_value.data = mock_rpc_response_data(
+            session_id, payload["p_findings"], payload["p_verification_items"]
+        )
+        return call_mock
+
+    mock_client.rpc.side_effect = rpc_side_effect
+
+    # Add an unresolved question to analysis.unresolved_questions
+    analysis_with_uq = sample_analysis.model_copy(
+        update={
+            "unresolved_questions": [
+                LLMVerificationItem(
+                    task="What are the housing deposit deadlines?",
+                    is_general_unresolved_question=True,
+                    related_finding_title=None,
+                )
+            ]
+        },
+        deep=True,
+    )
+
+    service = AnalysisPersistenceService(client=mock_client)
+    await service.persist_analysis(session_id, user_id, analysis_with_uq)
+
+    tasks = captured_payload["p_verification_items"]
+    housing_task = next((t for t in tasks if "housing deposit" in t["task"].lower()), None)
+
+    assert housing_task is not None
+    assert housing_task["finding_id"] is None
+
+
 # =============================================================================
 # 7. Unique Finding-Title Mapping (Case and Whitespace Normalized)
 # =============================================================================

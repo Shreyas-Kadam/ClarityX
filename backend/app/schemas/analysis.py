@@ -146,6 +146,11 @@ class LLMAnalysisResponse(BaseModel):
         max_length=30,
         description="List of detected information gaps across the four categories.",
     )
+    unresolved_questions: List[LLMVerificationItem] = Field(
+        default_factory=list,
+        max_length=30,
+        description="General unresolved research questions not tied to a specific finding.",
+    )
     verification_checklist: List[LLMVerificationItem] = Field(
         default_factory=list,
         max_length=30,

@@ -291,21 +291,13 @@ async def analyze_research_session(
             detail="The requested research session was not found.",
         )
 
-    # 3. Check AI service configuration upfront
-    if not ai_service.settings.is_ai_configured or not getattr(ai_service, "client", None):
-        raise AIProviderError(
-            message="AI service is not configured. OPENROUTER_API_KEY is required.",
-            status_code=503,
-            detail="OpenRouter credentials are missing or empty in configuration.",
-        )
-
-    # 4. Retrieve raw sources with full extracted content
+    # 3. Retrieve raw sources with full extracted content
     raw_sources = await source_repo.get_raw_sources_by_session(
         session_id=session_id_str,
         user_id=user_id_str,
     )
 
-    # 5. Filter usable sources (non-failed extraction, non-empty content)
+    # 4. Filter usable sources (non-failed extraction, non-empty content)
     usable_sources = [
         s
         for s in raw_sources
@@ -321,6 +313,14 @@ async def analyze_research_session(
             message="Insufficient source content for analysis",
             status_code=400,
             detail=detail_msg,
+        )
+
+    # 5. Check AI service configuration before execution
+    if not ai_service.settings.is_ai_configured or not getattr(ai_service, "client", None):
+        raise AIProviderError(
+            message="AI service is not configured. OPENROUTER_API_KEY is required.",
+            status_code=503,
+            detail="OpenRouter credentials are missing or empty in configuration.",
         )
 
     # 6. Convert to SourceAnalysisInput schema (preserving source_code, title, url, extracted_content)

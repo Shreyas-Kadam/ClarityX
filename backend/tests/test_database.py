@@ -203,3 +203,23 @@ def test_migration_sql_file_exists_and_valid():
     assert "CHECK (category IN ('missing', 'outdated', 'conflicting', 'unverified'))" in content
 
 
+# =============================================================================
+# USER CLIENT INITIALIZATION TESTS
+# =============================================================================
+
+def test_authenticated_user_client_initialization_with_jwt():
+    """Verifies that user-scoped client is initialized with anon key and user JWT."""
+    from tests.verify_analysis_integration import create_authenticated_user_client
+
+    client = create_authenticated_user_client(
+        "https://example.supabase.co",
+        "anon-key-12345",
+        "test-user-jwt-token",
+    )
+    assert client is not None
+    # Verify postgrest has anon apikey
+    assert client.postgrest.headers.get("apikey") == "anon-key-12345"
+    # Verify postgrest has user authorization bearer header
+    assert client.postgrest.headers.get("authorization") == "Bearer test-user-jwt-token"
+
+

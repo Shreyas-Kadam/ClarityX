@@ -431,6 +431,85 @@ async def test_analyze_no_sources():
 
 
 @pytest.mark.anyio
+async def test_analyze_no_usable_sources_when_ai_unconfigured():
+    """A session with no usable sources returns 400 even when AI is unconfigured."""
+    alice_id = "e87b7ef5-1d4a-4632-9cb7-7f9cb894bb80"
+    session_id = "11111111-2222-3333-4444-555555555555"
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.get_user.return_value = create_mock_auth_user(user_id=alice_id)
+
+    mock_research_repo = MagicMock(spec=ResearchRepository)
+    mock_research_repo.get_session_by_id = AsyncMock(return_value={
+        "id": session_id,
+        "user_id": alice_id,
+        "research_goal": "Goal with no sources and unconfigured AI",
+    })
+
+    mock_source_repo = MagicMock(spec=SourceRepository)
+    mock_source_repo.get_raw_sources_by_session = AsyncMock(return_value=[])
+
+    # AI service is explicitly unconfigured
+    mock_ai_service = MagicMock(spec=AIService)
+    mock_ai_service.settings = MagicMock()
+    mock_ai_service.settings.is_ai_configured = False
+    mock_ai_service.client = None
+
+    mock_persistence_service = MagicMock(spec=AnalysisPersistenceService)
+
+    app.dependency_overrides[get_research_repository] = lambda: mock_research_repo
+    app.dependency_overrides[get_source_repository] = lambda: mock_source_repo
+    app.dependency_overrides[get_ai_service] = lambda: mock_ai_service
+    app.dependency_overrides[get_analysis_persistence_service] = lambda: mock_persistence_service
+
+    transport = ASGITransport(app=app)
+    with patch("app.dependencies.auth.get_supabase_client", return_value=mock_auth_client):
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                f"/api/research/{session_id}/analyze",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+            # Must return 400 (source validation precedes AI config validation)
+            assert response.status_code == 400
+            assert "Insufficient source content for analysis" in response.json()["message"]
+            assert "has no sources" in response.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_analyze_unauthorized_user_when_ai_unconfigured():
+    """Unauthorized / cross-user request returns 404 regardless of AI configuration."""
+    bob_id = "99999999-9999-9999-9999-999999999999"
+    session_id = "11111111-2222-3333-4444-555555555555"
+
+    mock_auth_client = MagicMock()
+    mock_auth_client.auth.get_user.return_value = create_mock_auth_user(user_id=bob_id)
+
+    mock_research_repo = MagicMock(spec=ResearchRepository)
+    # Session not found for Bob
+    mock_research_repo.get_session_by_id = AsyncMock(return_value=None)
+
+    # AI service is explicitly unconfigured
+    mock_ai_service = MagicMock(spec=AIService)
+    mock_ai_service.settings = MagicMock()
+    mock_ai_service.settings.is_ai_configured = False
+    mock_ai_service.client = None
+
+    app.dependency_overrides[get_research_repository] = lambda: mock_research_repo
+    app.dependency_overrides[get_ai_service] = lambda: mock_ai_service
+
+    transport = ASGITransport(app=app)
+    with patch("app.dependencies.auth.get_supabase_client", return_value=mock_auth_client):
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                f"/api/research/{session_id}/analyze",
+                headers={"Authorization": "Bearer valid-token"},
+            )
+            # Ownership check precedes AI config check, returning 404
+            assert response.status_code == 404
+            assert "Research session not found" in response.json()["message"]
+
+
+@pytest.mark.anyio
 async def test_analyze_sources_with_unusable_empty_extracted_content():
     """7. Session where all sources failed extraction or have empty content returns 400."""
     alice_id = "e87b7ef5-1d4a-4632-9cb7-7f9cb894bb80"
