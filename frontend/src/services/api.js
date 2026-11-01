@@ -43,10 +43,22 @@ export async function apiFetch(endpoint, options = {}) {
 
   const token = await getAuthToken()
 
+  const isFormData =
+    typeof FormData !== 'undefined' && options.body instanceof FormData
+
   const headers = {
-    'Content-Type': 'application/json',
     Accept: 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers || {}),
+  }
+
+  // Remove any explicit Content-Type header (regardless of casing) for multipart FormData payloads
+  if (isFormData) {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'content-type') {
+        delete headers[key]
+      }
+    }
   }
 
   if (token) {
@@ -92,7 +104,9 @@ export async function apiFetch(endpoint, options = {}) {
 
     // Notify auth context if access token was rejected
     if (response.status === 401) {
-      window.dispatchEvent(new CustomEvent('clarityx:unauthorized'))
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('clarityx:unauthorized'))
+      }
     }
 
     throw error

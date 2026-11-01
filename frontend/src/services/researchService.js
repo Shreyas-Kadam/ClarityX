@@ -81,3 +81,16 @@ export async function deleteResearch(id) {
   })
 }
 
+/**
+ * Triggers AI information gap analysis on a research session.
+ * Calls POST /api/research/:id/analyze
+ *
+ * @param {string} id - Research session UUID
+ * @returns {Promise<{success: boolean, message: string, data: Object}>}
+ */
+export async function analyzeResearch(id) {
+  return await apiFetch(`/api/research/${id}/analyze`, {
+    method: 'POST',
+  })
+}
+
