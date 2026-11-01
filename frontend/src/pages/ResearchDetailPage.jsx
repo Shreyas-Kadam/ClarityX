@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Clock,
   Sparkles,
-  Lock,
   Trash2,
   AlertCircle,
   CheckCircle,
@@ -13,6 +12,7 @@ import {
   RefreshCw,
   X,
   Globe,
+  Filter,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
@@ -21,6 +21,11 @@ import { getResearchById, deleteResearch, analyzeResearch } from '@/services/res
 import { getSources, deleteSource } from '@/services/sourceService'
 import { SourceCard } from '@/components/sources/SourceCard'
 import { AddSourceForm } from '@/components/sources/AddSourceForm'
+import {
+  FindingCard,
+  FindingsOverview,
+  FindingsFilter,
+} from '@/components/findings'
 
 /**
  * Safely formats an ISO timestamp or date string.
@@ -51,6 +56,7 @@ export function ResearchDetailPage() {
   const [isDeletingSourceId, setIsDeletingSourceId] = useState(null)
   const [sourceFeedback, setSourceFeedback] = useState({ error: '', success: '' })
   const [analysisFeedback, setAnalysisFeedback] = useState({ error: '', success: '' })
+  const [selectedCategory, setSelectedCategory] = useState('all')
 
   useEffect(() => {
     let isCancelled = false
@@ -280,10 +286,24 @@ export function ResearchDetailPage() {
   const createdFormatted = formatTimestamp(session.created_at)
   const updatedFormatted = formatTimestamp(session.updated_at)
   const sourcesCount = sources.length
-  const findingsCount = session.findings?.length || 0
+  const findingsList = Array.isArray(session.findings) ? session.findings : []
+  const findingsCount = findingsList.length
   const verificationCount = session.verification_items?.length || 0
   const unresolvedCount = session.unresolved_questions?.length || 0
   const isCompleted = session.status === 'completed'
+
+  const categoryCounts = {
+    all: findingsList.length,
+    missing: findingsList.filter((f) => (f.category || '').toLowerCase() === 'missing').length,
+    outdated: findingsList.filter((f) => (f.category || '').toLowerCase() === 'outdated').length,
+    conflicting: findingsList.filter((f) => (f.category || '').toLowerCase() === 'conflicting').length,
+    unverified: findingsList.filter((f) => (f.category || '').toLowerCase() === 'unverified').length,
+  }
+
+  const filteredFindings =
+    selectedCategory === 'all'
+      ? findingsList
+      : findingsList.filter((f) => (f.category || '').toLowerCase() === selectedCategory)
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -494,9 +514,6 @@ export function ResearchDetailPage() {
           Information Gaps
           <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-[#2B2D42]">
             {findingsCount}
-          </span>
-          <span className="text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
-            Phase VI
           </span>
         </button>
       </div>
@@ -740,21 +757,146 @@ export function ResearchDetailPage() {
         </div>
       )}
 
-      {/* Findings Tab Placeholder (to be unlocked in Step 2.4) */}
+      {/* Findings Tab */}
       {activeTab === 'findings' && (
-        <GlassCard className="p-8 text-center space-y-4">
-          <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
-            <Lock className="size-6" />
-          </div>
-          <div className="max-w-md mx-auto space-y-1">
-            <h3 className="font-heading font-bold text-base text-[#2B2D42]">
-              Gap Detection Engine Scheduled for Phase VI
-            </h3>
-            <p className="text-xs text-[#8D99AE]">
-              Categorized information gaps (Missing, Outdated, Conflicting, and Unverified) with evidence cross-references and verification task lists will be populated automatically when AI analysis runs in Phase VI.
-            </p>
-          </div>
-        </GlassCard>
+        <div className="space-y-5">
+          {findingsList.length > 0 ? (
+            <>
+              {/* Findings Overview Metrics */}
+              <FindingsOverview findings={findingsList} />
+
+              {/* Category Filter Pills & Counter */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <FindingsFilter
+                  selectedCategory={selectedCategory}
+                  onSelectCategory={setSelectedCategory}
+                  counts={categoryCounts}
+                />
+                <span className="text-xs text-[#8D99AE] font-medium">
+                  Showing {filteredFindings.length} of {findingsList.length} gap{findingsList.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {/* Filtered Finding Cards */}
+              {filteredFindings.length > 0 ? (
+                <div className="space-y-4">
+                  {filteredFindings.map((finding, idx) => (
+                    <FindingCard
+                      key={finding.id || `finding-${idx}`}
+                      finding={finding}
+                      sources={sources}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <GlassCard className="p-8 text-center space-y-3">
+                  <div className="size-10 rounded-xl bg-slate-100 text-[#8D99AE] flex items-center justify-center mx-auto border border-slate-200">
+                    <Filter className="size-5" />
+                  </div>
+                  <div className="max-w-md mx-auto space-y-1">
+                    <h4 className="font-heading font-bold text-sm text-[#2B2D42]">
+                      No {selectedCategory.toLowerCase()} findings found in this research session.
+                    </h4>
+                    <p className="text-xs text-[#8D99AE]">
+                      No information gaps match the selected category filter.
+                    </p>
+                  </div>
+                  <div className="pt-1">
+                    <NeuButton
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setSelectedCategory('all')}
+                    >
+                      View All Findings ({findingsList.length})
+                    </NeuButton>
+                  </div>
+                </GlassCard>
+              )}
+            </>
+          ) : session.status === 'completed' ? (
+            /* Completed analysis with zero findings */
+            <GlassCard className="p-8 text-center space-y-4">
+              <div className="size-12 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-500/20">
+                <CheckCircle className="size-6" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1.5">
+                <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+                  No Information Gaps Detected
+                </h3>
+                <p className="text-xs text-[#8D99AE] leading-relaxed">
+                  The AI analysis evaluated your available sources and found no missing, outdated, conflicting, or unverified claims.
+                </p>
+              </div>
+            </GlassCard>
+          ) : session.status === 'failed' ? (
+            /* Failed analysis state */
+            <GlassCard className="p-8 text-center space-y-4">
+              <div className="size-12 rounded-xl bg-[#EF233C]/10 text-[#D90429] flex items-center justify-center mx-auto border border-[#EF233C]/20">
+                <AlertCircle className="size-6" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1.5">
+                <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+                  Analysis Failed
+                </h3>
+                <p className="text-xs text-[#8D99AE] leading-relaxed">
+                  {analysisFeedback.error ||
+                    'AI information gap analysis could not be completed. Please check your source material and retry analysis.'}
+                </p>
+              </div>
+              <div className="pt-2">
+                <NeuButton
+                  variant="primary"
+                  size="sm"
+                  onClick={handleRunAnalysis}
+                  disabled={isAnalyzing || !hasUsableSources}
+                  icon={isAnalyzing ? RefreshCw : Sparkles}
+                >
+                  {isAnalyzing ? 'Analyzing...' : 'Retry Gap Analysis'}
+                </NeuButton>
+              </div>
+            </GlassCard>
+          ) : (
+            /* Analysis not yet completed */
+            <GlassCard className="p-8 text-center space-y-4">
+              <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
+                <Sparkles className="size-6" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1.5">
+                <h3 className="font-heading font-bold text-base text-[#2B2D42]">
+                  Analysis Not Yet Run
+                </h3>
+                <p className="text-xs text-[#8D99AE] leading-relaxed">
+                  Run Gap Analysis to discover missing, outdated, conflicting, and unverified information across your submitted sources.
+                </p>
+              </div>
+              <div className="pt-2 flex flex-wrap justify-center gap-3">
+                {hasUsableSources ? (
+                  <NeuButton
+                    variant="primary"
+                    size="sm"
+                    onClick={handleRunAnalysis}
+                    disabled={isAnalyzing}
+                    icon={isAnalyzing ? RefreshCw : Sparkles}
+                  >
+                    {isAnalyzing ? 'Analyzing...' : 'Run Gap Analysis'}
+                  </NeuButton>
+                ) : (
+                  <NeuButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setActiveTab('sources')
+                      setShowAddSource(true)
+                    }}
+                    icon={Plus}
+                  >
+                    Add Source Material
+                  </NeuButton>
+                )}
+              </div>
+            </GlassCard>
+          )}
+        </div>
       )}
     </div>
   )

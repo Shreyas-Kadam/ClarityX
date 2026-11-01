@@ -37,6 +37,21 @@ export function isValidUrl(urlString) {
 }
 
 /**
+ * Safely formats an AI confidence score (0.0 to 1.0) into a percentage string.
+ * Returns null if confidence is missing, null, undefined, or NaN, preventing "NaN%" output.
+ *
+ * @param {number|null|undefined} confidence
+ * @returns {string|null}
+ */
+export function formatConfidence(confidence) {
+  if (confidence === null || confidence === undefined) return null
+  if (typeof confidence === 'string' && confidence.trim() === '') return null
+  const num = typeof confidence === 'number' ? confidence : Number(confidence)
+  if (isNaN(num) || num < 0 || num > 1) return null
+  return `${Math.round(num * 100)}%`
+}
+
+/**
  * Formats file size in bytes to a human-readable string.
  *
  * @param {number} bytes
