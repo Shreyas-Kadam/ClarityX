@@ -9,11 +9,18 @@ import {
   AlertCircle,
   CheckCircle,
   FileText,
+  Plus,
+  RefreshCw,
+  X,
+  Globe,
 } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { getResearchById, deleteResearch } from '@/services/researchService'
+import { getSources, deleteSource } from '@/services/sourceService'
+import { SourceCard } from '@/components/sources/SourceCard'
+import { AddSourceForm } from '@/components/sources/AddSourceForm'
 
 /**
  * Safely formats an ISO timestamp or date string.
@@ -33,10 +40,15 @@ export function ResearchDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [session, setSession] = useState(null)
+  const [sources, setSources] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingSources, setLoadingSources] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [activeTab, setActiveTab] = useState('summary')
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showAddSource, setShowAddSource] = useState(false)
+  const [isDeletingSourceId, setIsDeletingSourceId] = useState(null)
+  const [sourceFeedback, setSourceFeedback] = useState({ error: '', success: '' })
 
   useEffect(() => {
     let isCancelled = false
@@ -54,6 +66,7 @@ export function ResearchDetailPage() {
             id: response.data.research_id || response.data.id || id,
           }
           setSession(normalized)
+          setSources(normalized.sources || [])
         } else {
           setErrorMsg('Research session record was empty.')
         }
@@ -67,6 +80,7 @@ export function ResearchDetailPage() {
           setErrorMsg(err.message || 'Unable to retrieve research record from backend.')
         }
         setSession(null)
+        setSources([])
       } finally {
         if (!isCancelled) {
           setLoading(false)
@@ -95,6 +109,60 @@ export function ResearchDetailPage() {
     } catch (err) {
       alert(`Failed to delete research session: ${err.message}`)
       setIsDeleting(false)
+    }
+  }
+
+  const handleRefreshSources = async () => {
+    const researchId = session?.id || id
+    if (!researchId) return
+
+    setLoadingSources(true)
+    try {
+      const response = await getSources(researchId)
+      const list = response?.data?.sources || []
+      setSources(list)
+      setSession((prev) => (prev ? { ...prev, sources: list } : prev))
+    } catch (err) {
+      setSourceFeedback((prev) => ({
+        ...prev,
+        error: err.message || 'Failed to refresh sources.',
+      }))
+    } finally {
+      setLoadingSources(false)
+    }
+  }
+
+  const handleSourceAdded = (createdSource) => {
+    const code = createdSource?.source_code ? `[${createdSource.source_code}] ` : ''
+    const title = createdSource?.title || 'New source'
+    setSourceFeedback({
+      error: '',
+      success: `Source ${code}"${title}" successfully attached and extracted!`,
+    })
+    setShowAddSource(false)
+    handleRefreshSources()
+  }
+
+  const handleDeleteSource = async (sourceId) => {
+    const researchId = session?.id || id
+    if (!researchId || isDeletingSourceId) return
+
+    setIsDeletingSourceId(sourceId)
+    setSourceFeedback({ error: '', success: '' })
+    try {
+      await deleteSource(researchId, sourceId)
+      setSourceFeedback({
+        error: '',
+        success: 'Source successfully removed from research session.',
+      })
+      await handleRefreshSources()
+    } catch (err) {
+      setSourceFeedback({
+        error: err.message || 'Failed to delete source.',
+        success: '',
+      })
+    } finally {
+      setIsDeletingSourceId(null)
     }
   }
 
@@ -136,7 +204,7 @@ export function ResearchDetailPage() {
 
   const createdFormatted = formatTimestamp(session.created_at)
   const updatedFormatted = formatTimestamp(session.updated_at)
-  const sourcesCount = session.sources?.length || 0
+  const sourcesCount = sources.length
   const findingsCount = session.findings?.length || 0
   const verificationCount = session.verification_items?.length || 0
   const unresolvedCount = session.unresolved_questions?.length || 0
@@ -228,6 +296,19 @@ export function ResearchDetailPage() {
           Overview & Status
         </button>
         <button
+          onClick={() => setActiveTab('sources')}
+          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'sources'
+              ? 'border-[#D90429] text-[#D90429]'
+              : 'border-transparent text-[#8D99AE] hover:text-[#2B2D42]'
+          }`}
+        >
+          Source Material
+          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-[#2B2D42]">
+            {sourcesCount}
+          </span>
+        </button>
+        <button
           onClick={() => setActiveTab('findings')}
           className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
             activeTab === 'findings'
@@ -238,19 +319,6 @@ export function ResearchDetailPage() {
           Information Gaps
           <span className="text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
             Phase VI
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('sources')}
-          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
-            activeTab === 'sources'
-              ? 'border-[#D90429] text-[#D90429]'
-              : 'border-transparent text-[#8D99AE] hover:text-[#2B2D42]'
-          }`}
-        >
-          Source Material
-          <span className="text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
-            Phase V
           </span>
         </button>
       </div>
@@ -321,6 +389,151 @@ export function ResearchDetailPage() {
         </div>
       )}
 
+      {/* Sources Tab - Active Source Ingestion Management */}
+      {activeTab === 'sources' && (
+        <div className="space-y-4">
+          {/* Source Management Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <h3 className="text-base font-bold text-[#2B2D42] flex items-center gap-2">
+                <span>Source Material</span>
+                <span className="px-2 py-0.5 rounded-full bg-[#2B2D42] text-[#EDF2F4] text-xs font-mono">
+                  {sources.length} / 5
+                </span>
+              </h3>
+              <p className="text-xs text-[#8D99AE]">
+                Authoritative reference sources and evidence material used for cross-source gap analysis.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <NeuButton
+                variant="default"
+                size="sm"
+                onClick={handleRefreshSources}
+                disabled={loadingSources}
+                icon={RefreshCw}
+                title="Refresh source list"
+              >
+                {loadingSources ? 'Refreshing...' : 'Refresh'}
+              </NeuButton>
+
+              {sources.length < 5 && (
+                <NeuButton
+                  variant="cta"
+                  size="sm"
+                  onClick={() => {
+                    setShowAddSource((prev) => !prev)
+                    setSourceFeedback({ error: '', success: '' })
+                  }}
+                  icon={showAddSource ? X : Plus}
+                >
+                  {showAddSource ? 'Cancel' : 'Add Source'}
+                </NeuButton>
+              )}
+            </div>
+          </div>
+
+          {/* Source Limit Notice */}
+          {sources.length >= 5 && !showAddSource && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+              <AlertCircle className="size-4 shrink-0 text-amber-600" />
+              <span>
+                <strong>Source capacity reached (5/5).</strong> To attach a new source, delete an existing source first.
+              </span>
+            </div>
+          )}
+
+          {/* Feedback Messages */}
+          {sourceFeedback.success && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="size-4 text-emerald-600 shrink-0" />
+                <span>{sourceFeedback.success}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSourceFeedback((p) => ({ ...p, success: '' }))}
+                className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                title="Dismiss message"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )}
+
+          {sourceFeedback.error && (
+            <div className="p-3.5 rounded-xl bg-[#EF233C]/10 border border-[#EF233C]/30 text-[#D90429] text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="size-4 text-[#D90429] shrink-0" />
+                <span>{sourceFeedback.error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSourceFeedback((p) => ({ ...p, error: '' }))}
+                className="text-[#D90429] hover:text-[#2B2D42] cursor-pointer"
+                title="Dismiss message"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Add Source Form Card */}
+          {showAddSource && sources.length < 5 && (
+            <AddSourceForm
+              researchId={session.id}
+              currentSourceCount={sources.length}
+              onSuccess={handleSourceAdded}
+              onCancel={() => setShowAddSource(false)}
+            />
+          )}
+
+          {/* Source List or Empty State */}
+          {sources.length === 0 ? (
+            <GlassCard className="p-10 text-center space-y-4">
+              <div className="size-14 rounded-2xl bg-white/70 border border-[#8D99AE]/20 text-[#8D99AE] flex items-center justify-center mx-auto">
+                <Globe className="size-7 text-[#D90429]" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1">
+                <h4 className="font-heading font-bold text-base text-[#2B2D42]">
+                  No Sources Attached Yet
+                </h4>
+                <p className="text-xs text-[#8D99AE] leading-relaxed">
+                  Attach up to 5 sources (website articles, raw text excerpts, or PDF/DOCX documents) to enable AI information gap detection.
+                </p>
+              </div>
+              {!showAddSource && (
+                <div className="pt-2">
+                  <NeuButton
+                    variant="cta"
+                    size="sm"
+                    icon={Plus}
+                    onClick={() => {
+                      setShowAddSource(true)
+                      setSourceFeedback({ error: '', success: '' })
+                    }}
+                  >
+                    Add First Source
+                  </NeuButton>
+                </div>
+              )}
+            </GlassCard>
+          ) : (
+            <div className="space-y-3.5">
+              {sources.map((source) => (
+                <SourceCard
+                  key={source.id}
+                  source={source}
+                  onDelete={handleDeleteSource}
+                  isDeleting={isDeletingSourceId === source.id}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Findings Tab Placeholder (to be unlocked in Step 2.4) */}
       {activeTab === 'findings' && (
         <GlassCard className="p-8 text-center space-y-4">
@@ -333,23 +546,6 @@ export function ResearchDetailPage() {
             </h3>
             <p className="text-xs text-[#8D99AE]">
               Categorized information gaps (Missing, Outdated, Conflicting, and Unverified) with evidence cross-references and verification task lists will be populated automatically when AI analysis runs in Phase VI.
-            </p>
-          </div>
-        </GlassCard>
-      )}
-
-      {/* Sources Tab Placeholder (to be unlocked in Step 2.2) */}
-      {activeTab === 'sources' && (
-        <GlassCard className="p-8 text-center space-y-4">
-          <div className="size-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
-            <Lock className="size-6" />
-          </div>
-          <div className="max-w-md mx-auto space-y-1">
-            <h3 className="font-heading font-bold text-base text-[#2B2D42]">
-              Source Ingestion Pipeline Scheduled for Phase V
-            </h3>
-            <p className="text-xs text-[#8D99AE]">
-              Multi-source extraction engine using Trafilatura and Jina Reader (with SSRF protection and DuckDuckGo discovery) will be integrated in Phase V.
             </p>
           </div>
         </GlassCard>
