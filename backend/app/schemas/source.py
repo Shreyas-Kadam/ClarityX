@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WebsiteExtractRequest(BaseModel):
@@ -145,12 +145,24 @@ class SourceResponse(BaseModel):
     url: Optional[str] = None
     source_type: Literal["website", "pasted_text", "document"]
     extracted_content: str = ""
+    character_count: Optional[int] = None
+    word_count: Optional[int] = None
     published_at: Optional[datetime] = None
     accessed_at: datetime
     extraction_status: Literal["success", "partial", "failed"] = "success"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def compute_counts(self) -> "SourceResponse":
+        """Computes character and word counts dynamically if not explicitly provided."""
+        content = self.extracted_content or ""
+        if self.character_count is None:
+            self.character_count = len(content)
+        if self.word_count is None:
+            self.word_count = len(content.split()) if content.strip() else 0
+        return self
 
 
 class SourcePreviewResponse(BaseModel):

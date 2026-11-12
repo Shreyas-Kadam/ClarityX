@@ -2,6 +2,7 @@ import { Globe, FileText, File, ExternalLink, Trash2, Calendar, Clock } from 'lu
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
 import { SourceStatusBadge } from './SourceStatusBadge'
+import { cn } from '@/lib/utils'
 
 /**
  * Safely formats an ISO timestamp or date string.
@@ -25,10 +26,11 @@ function formatTimestamp(timestamp) {
  * @param {Object} props
  * @param {Object} props.source - SourcePreviewResponse object
  * @param {Function} props.onDelete - Callback when delete is confirmed
+ * @param {Function} [props.onViewSource] - Callback when viewing full source content
  * @param {boolean} [props.isDeleting=false] - Whether this source is currently being deleted
  * @param {boolean} [props.disabled=false] - Whether interactions are disabled (e.g. during active analysis)
  */
-export function SourceCard({ source, onDelete, isDeleting = false, disabled = false }) {
+export function SourceCard({ source, onDelete, onViewSource, isDeleting = false, disabled = false }) {
   const publishedFormatted = formatTimestamp(source.published_at)
   const accessedFormatted = formatTimestamp(source.accessed_at)
 
@@ -89,23 +91,65 @@ export function SourceCard({ source, onDelete, isDeleting = false, disabled = fa
           )}
         </div>
 
-        {/* Delete Action */}
-        <NeuButton
-          variant="destructive"
-          size="sm"
-          onClick={handleDelete}
-          disabled={isDeleting || disabled}
-          icon={Trash2}
-          title="Delete this source"
-        >
-          {isDeleting ? 'Deleting...' : 'Delete'}
-        </NeuButton>
+        {/* Actions: View Source & Delete */}
+        <div className="flex items-center gap-2 shrink-0">
+          {onViewSource && (
+            <NeuButton
+              variant="default"
+              size="sm"
+              onClick={() => onViewSource(source)}
+              disabled={disabled}
+              icon={FileText}
+              title="Open complete extracted source content"
+            >
+              View Source
+            </NeuButton>
+          )}
+
+          <NeuButton
+            variant="destructive"
+            size="sm"
+            onClick={handleDelete}
+            disabled={isDeleting || disabled}
+            icon={Trash2}
+            title="Delete this source"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </NeuButton>
+        </div>
       </div>
 
-      {/* Content Preview Box */}
-      <div className="p-3.5 rounded-xl neu-inset bg-white/40 space-y-1">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-[#8D99AE]">
-          Content Preview
+      {/* Content Preview Box (Clickable if onViewSource is provided) */}
+      <div
+        role={onViewSource ? 'button' : undefined}
+        tabIndex={onViewSource ? 0 : undefined}
+        onClick={onViewSource ? () => onViewSource(source) : undefined}
+        onKeyDown={
+          onViewSource
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onViewSource(source)
+                }
+              }
+            : undefined
+        }
+        className={cn(
+          'p-3.5 rounded-xl neu-inset bg-white/40 space-y-1 transition-all text-left',
+          onViewSource && 'cursor-pointer hover:bg-white/60 hover:border-slate-300 group'
+        )}
+        title={onViewSource ? 'Click to inspect complete extracted source content' : undefined}
+      >
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-[#8D99AE]">
+            Content Preview
+          </div>
+          {onViewSource && (
+            <span className="text-[10px] font-semibold text-[#8D99AE] group-hover:text-[#D90429] flex items-center gap-1 transition-colors">
+              <FileText className="size-3" />
+              Full Content &rarr;
+            </span>
+          )}
         </div>
         <p className="text-xs text-[#2B2D42] leading-relaxed font-mono whitespace-pre-wrap break-words">
           {source.content_preview?.trim() || (

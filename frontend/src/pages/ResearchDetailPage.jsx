@@ -21,7 +21,7 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import { getResearchById, deleteResearch, analyzeResearch } from '@/services/researchService'
 import { getSources, deleteSource } from '@/services/sourceService'
 import { updateVerificationStatus } from '@/services/verificationService'
-import { SourceCard } from '@/components/sources/SourceCard'
+import { SourceCard, SourceViewerModal, invalidateSourceCache } from '@/components/sources'
 import { AddSourceForm } from '@/components/sources/AddSourceForm'
 import {
   FindingCard,
@@ -66,6 +66,31 @@ export function ResearchDetailPage() {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [updatingTaskIds, setUpdatingTaskIds] = useState(new Set())
   const [verificationFeedback, setVerificationFeedback] = useState({ error: '', success: '' })
+  const [activeSourceViewer, setActiveSourceViewer] = useState({
+    isOpen: false,
+    sourceId: null,
+    targetQuotation: null,
+    initialPreview: null,
+  })
+
+  const handleOpenSourceViewer = (sourceId, targetQuotation = null, initialPreview = null) => {
+    if (!sourceId) return
+    setActiveSourceViewer({
+      isOpen: true,
+      sourceId,
+      targetQuotation,
+      initialPreview,
+    })
+  }
+
+  const handleCloseSourceViewer = () => {
+    setActiveSourceViewer({
+      isOpen: false,
+      sourceId: null,
+      targetQuotation: null,
+      initialPreview: null,
+    })
+  }
 
   useEffect(() => {
     let isCancelled = false
@@ -169,6 +194,10 @@ export function ResearchDetailPage() {
     setSourceFeedback({ error: '', success: '' })
     try {
       await deleteSource(researchId, sourceId)
+      invalidateSourceCache(researchId, sourceId)
+      if (activeSourceViewer.sourceId === sourceId) {
+        handleCloseSourceViewer()
+      }
       setSourceFeedback({
         error: '',
         success: 'Source successfully removed from research session.',
@@ -839,6 +868,7 @@ export function ResearchDetailPage() {
                   key={source.id}
                   source={source}
                   onDelete={handleDeleteSource}
+                  onViewSource={(src) => handleOpenSourceViewer(src.id, null, src)}
                   isDeleting={isDeletingSourceId === source.id}
                   disabled={isAnalyzing}
                 />
@@ -876,6 +906,7 @@ export function ResearchDetailPage() {
                       key={finding.id || `finding-${idx}`}
                       finding={finding}
                       sources={sources}
+                      onViewEvidence={(ev, src) => handleOpenSourceViewer(ev.source_id, ev.evidence_text, src)}
                     />
                   ))}
                 </div>
@@ -1102,6 +1133,16 @@ export function ResearchDetailPage() {
 
       {/* Dedicated Print-Only Assessment Document */}
       <ResearchConclusionPrint session={session} sources={sources} />
+
+      {/* Full Extracted Source Viewer & Evidence Navigation Modal */}
+      <SourceViewerModal
+        isOpen={activeSourceViewer.isOpen}
+        onClose={handleCloseSourceViewer}
+        researchId={session?.id || id}
+        sourceId={activeSourceViewer.sourceId}
+        targetQuotation={activeSourceViewer.targetQuotation}
+        initialPreview={activeSourceViewer.initialPreview}
+      />
     </>
   )
 }

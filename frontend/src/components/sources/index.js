@@ -1,3 +1,5 @@
 export { SourceStatusBadge } from './SourceStatusBadge'
 export { SourceCard } from './SourceCard'
 export { AddSourceForm } from './AddSourceForm'
+export { SourceViewerModal } from './SourceViewerModal'
+export { invalidateSourceCache, clearSourceCache } from '@/lib/sourceCache'

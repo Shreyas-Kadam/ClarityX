@@ -21,9 +21,10 @@ import { cn } from '@/lib/utils'
  * @param {Object} props
  * @param {Object} props.finding - FindingResponse object
  * @param {Array} [props.sources=[]] - Ingested sources array for citation resolution
+ * @param {Function} [props.onViewEvidence] - Callback to inspect quotation in source viewer
  * @param {string} [props.className]
  */
-export function FindingCard({ finding, sources = [], className }) {
+export function FindingCard({ finding, sources = [], onViewEvidence, className }) {
   const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(true)
 
   if (!finding) return null
@@ -122,7 +123,14 @@ export function FindingCard({ finding, sources = [], className }) {
                 const resolvedSource =
                   sourcesById.get(ev.source_id) || sourcesByCode.get(ev.source_code)
                 const key = ev.id || `${finding.id}-ev-${index}`
-                return <EvidenceQuote key={key} evidence={ev} source={resolvedSource} />
+                return (
+                  <EvidenceQuote
+                    key={key}
+                    evidence={ev}
+                    source={resolvedSource}
+                    onViewEvidence={onViewEvidence}
+                  />
+                )
               })}
             </div>
           )

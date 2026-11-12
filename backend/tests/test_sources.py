@@ -912,11 +912,12 @@ async def test_list_sources_pagination():
 
 @pytest.mark.anyio
 async def test_get_source_by_id_returns_full_content():
-    """Retrieving a single source returns the full extracted_content."""
+    """Retrieving a single source returns the full extracted_content and computed counts."""
     mock_auth = MagicMock()
     mock_auth.auth.get_user.return_value = create_mock_auth_user(user_id=ALICE_ID)
 
     now_iso = datetime.now(timezone.utc).isoformat()
+    content = "Full unclipped 50,000-character evidence text here."
     mock_repo = MagicMock(spec=SourceRepository)
     mock_repo.get_source_by_id = AsyncMock(
         return_value={
@@ -926,7 +927,7 @@ async def test_get_source_by_id_returns_full_content():
             "title": "Complete Document",
             "url": None,
             "source_type": "document",
-            "extracted_content": "Full unclipped 50,000-character evidence text here.",
+            "extracted_content": content,
             "published_at": None,
             "accessed_at": now_iso,
             "extraction_status": "success",
@@ -947,7 +948,49 @@ async def test_get_source_by_id_returns_full_content():
             body = response.json()
             assert body["success"] is True
             assert body["data"]["id"] == SOURCE_ID
-            assert body["data"]["extracted_content"] == "Full unclipped 50,000-character evidence text here."
+            assert body["data"]["extracted_content"] == content
+            assert body["data"]["character_count"] == len(content)
+            assert body["data"]["word_count"] == len(content.split())
+
+
+@pytest.mark.anyio
+async def test_get_source_by_id_computes_metadata_and_counts_for_empty_and_custom_content():
+    """Dynamic character and word counts are computed accurately for various content states."""
+    mock_auth = MagicMock()
+    mock_auth.auth.get_user.return_value = create_mock_auth_user(user_id=ALICE_ID)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    mock_repo = MagicMock(spec=SourceRepository)
+    # Case with empty extracted content
+    mock_repo.get_source_by_id = AsyncMock(
+        return_value={
+            "id": SOURCE_ID,
+            "research_id": SESSION_ID,
+            "source_code": "S1",
+            "title": "Empty Source",
+            "url": "https://example.com/empty",
+            "source_type": "website",
+            "extracted_content": "",
+            "published_at": None,
+            "accessed_at": now_iso,
+            "extraction_status": "failed",
+            "created_at": now_iso,
+        }
+    )
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    transport = ASGITransport(app=app)
+    with patch("app.dependencies.auth.get_supabase_client", return_value=mock_auth):
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                f"/api/research/{SESSION_ID}/sources/{SOURCE_ID}",
+                headers={"Authorization": "Bearer alices-token"},
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["character_count"] == 0
+            assert body["data"]["word_count"] == 0
 
 
 @pytest.mark.anyio

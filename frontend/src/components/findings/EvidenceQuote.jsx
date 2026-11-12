@@ -12,9 +12,10 @@ import { cn } from '@/lib/utils'
  * @param {Object} props
  * @param {Object} props.evidence - EvidenceReferenceResponse object
  * @param {Object} [props.source] - Resolved SourcePreviewResponse object (if available)
+ * @param {Function} [props.onViewEvidence] - Callback to inspect and locate quote in source viewer
  * @param {string} [props.className]
  */
-export function EvidenceQuote({ evidence, source, className }) {
+export function EvidenceQuote({ evidence, source, onViewEvidence, className }) {
   if (!evidence) return null
 
   const sourceCode = evidence.source_code || source?.source_code || ''
@@ -85,20 +86,53 @@ export function EvidenceQuote({ evidence, source, className }) {
           )}
         </div>
 
-        {/* Evidence Role Badge */}
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0',
-            currentType.style
+        {/* Action & Evidence Role Badge */}
+        <div className="flex items-center gap-2 shrink-0">
+          {onViewEvidence && (
+            <button
+              type="button"
+              onClick={() => onViewEvidence(evidence, source)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-white hover:bg-slate-50 text-[#2B2D42] hover:text-[#D90429] border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+              title="Locate quotation in full extracted source text"
+            >
+              <FileText className="size-3 text-[#8D99AE]" />
+              <span>Locate in Source</span>
+            </button>
           )}
-        >
-          <TypeIcon className="size-3 shrink-0" />
-          {currentType.label}
-        </span>
+
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0',
+              currentType.style
+            )}
+          >
+            <TypeIcon className="size-3 shrink-0" />
+            {currentType.label}
+          </span>
+        </div>
       </div>
 
       {/* Verbatim Evidence Excerpt */}
-      <div className="neu-inset bg-white/40 p-3 rounded-lg border border-[#8D99AE]/10">
+      <div
+        role={onViewEvidence ? 'button' : undefined}
+        tabIndex={onViewEvidence ? 0 : undefined}
+        onClick={onViewEvidence ? () => onViewEvidence(evidence, source) : undefined}
+        onKeyDown={
+          onViewEvidence
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onViewEvidence(evidence, source)
+                }
+              }
+            : undefined
+        }
+        className={cn(
+          'neu-inset bg-white/40 p-3 rounded-lg border border-[#8D99AE]/10 transition-all text-left',
+          onViewEvidence && 'cursor-pointer hover:bg-white/70 hover:border-amber-300'
+        )}
+        title={onViewEvidence ? 'Click to inspect quotation in source viewer' : undefined}
+      >
         <blockquote className="text-xs text-[#2B2D42] font-mono leading-relaxed whitespace-pre-wrap break-words italic">
           &ldquo;{evidence.evidence_text}&rdquo;
         </blockquote>
