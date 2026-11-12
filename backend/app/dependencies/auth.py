@@ -51,17 +51,24 @@ def get_current_user(
     """
     client = get_supabase_client()
 
-    try:
-        user_response = client.auth.get_user(token)
-    except Exception as exc:
-        # Never log or expose the raw token or internal exception details
-        logger.warning(
-            f"Supabase auth token verification rejected: {type(exc).__name__}"
-        )
-        raise AuthenticationError(
-            message="Invalid or expired authentication token",
-            detail="The provided authentication token could not be verified.",
-        ) from None
+    user_response = None
+    for attempt in range(2):
+        try:
+            user_response = client.auth.get_user(token)
+            break
+        except Exception as exc:
+            err_name = type(exc).__name__
+            if attempt == 0 and any(t in err_name for t in ("Timeout", "Network", "Connection")):
+                logger.info(f"Transient {err_name} verifying auth token, retrying once...")
+                continue
+            # Never log or expose the raw token or internal exception details
+            logger.warning(
+                f"Supabase auth token verification rejected: {err_name}"
+            )
+            raise AuthenticationError(
+                message="Invalid or expired authentication token",
+                detail="The provided authentication token could not be verified.",
+            ) from None
 
     if not user_response or not getattr(user_response, "user", None):
         logger.warning("Supabase auth returned empty user object")

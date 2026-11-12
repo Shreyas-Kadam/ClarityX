@@ -24,6 +24,8 @@ from app.schemas.research import (
     ResearchSessionListResponse,
     ResearchSessionResponse,
     ResearchSessionUpdate,
+    ResearchStatsData,
+    ResearchStatsEnvelope,
 )
 from app.services.ai_service import AIService
 from app.services.analysis_persistence_service import AnalysisPersistenceService
@@ -143,6 +145,26 @@ async def list_research_sessions(
             limit=limit,
             offset=offset,
         ),
+    )
+
+
+@router.get(
+    "/stats",
+    response_model=ResearchStatsEnvelope,
+    summary="Get Research Session Statistics",
+    description="Returns the total count and status breakdown (completed, processing, pending, failed) across all research sessions for the authenticated user.",
+)
+async def get_research_stats(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    repo: ResearchRepository = Depends(get_research_repository),
+) -> ResearchStatsEnvelope:
+    """Retrieves session statistics strictly scoped to the authenticated user."""
+    user_id_str = str(current_user.id)
+    counts = await repo.get_user_session_counts(user_id=user_id_str)
+    return ResearchStatsEnvelope(
+        success=True,
+        message="Research statistics retrieved successfully",
+        data=ResearchStatsData.model_validate(counts),
     )
 
 
@@ -348,6 +370,13 @@ async def analyze_research_session(
         user_id=user_id_str,
         analysis=analysis_result,
     )
+    if report_data.created_at is None:
+        report_data = report_data.model_copy(
+            update={
+                "created_at": session.get("created_at"),
+                "updated_at": session.get("updated_at"),
+            }
+        )
 
     # 9. Return complete envelope
     return ResearchReportEnvelope(

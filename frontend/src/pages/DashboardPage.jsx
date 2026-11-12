@@ -15,11 +15,17 @@ import {
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
 import { StatusBadge } from '@/components/common/StatusBadge'
-import { getResearchSessions } from '@/services/researchService'
+import { getResearchSessions, getResearchStats } from '@/services/researchService'
+import { calculateDashboardCounts } from '@/lib/dashboardMetrics'
 
 export function DashboardPage() {
   const [sessions, setSessions] = useState([])
-  const [totalCount, setTotalCount] = useState(0)
+  const [stats, setStats] = useState({
+    total: 0,
+    completed: 0,
+    processing: 0,
+    pending: 0,
+  })
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
@@ -30,21 +36,30 @@ export function DashboardPage() {
     async function loadData() {
       try {
         setErrorMsg('')
-        const response = await getResearchSessions({ limit: 5 })
+        const [recentResponse, statsResponse] = await Promise.all([
+          getResearchSessions({ limit: 5 }),
+          getResearchStats().catch((err) => {
+            console.warn('Failed to load research stats, falling back to session list counts:', err)
+            return null
+          }),
+        ])
         if (isCancelled) return
 
-        if (response?.data?.research_sessions) {
-          setSessions(response.data.research_sessions)
-          setTotalCount(response.data.total ?? response.data.research_sessions.length)
-        } else {
-          setSessions([])
-          setTotalCount(0)
-        }
+        const recentList = recentResponse?.data?.research_sessions || []
+        setSessions(recentList)
+
+        const totalFromList = recentResponse?.data?.total ?? recentList.length
+        const computedStats = calculateDashboardCounts(
+          statsResponse?.data,
+          recentList,
+          totalFromList,
+        )
+        setStats(computedStats)
       } catch (err) {
         if (isCancelled) return
         setErrorMsg(err.message || 'Failed to retrieve research sessions from the backend.')
         setSessions([])
-        setTotalCount(0)
+        setStats({ total: 0, completed: 0, processing: 0, pending: 0 })
       } finally {
         if (!isCancelled) {
           setLoading(false)
@@ -64,9 +79,10 @@ export function DashboardPage() {
     setRefreshKey((prev) => prev + 1)
   }
 
-  const completedCount = sessions.filter((s) => s.status === 'completed').length
-  const processingCount = sessions.filter((s) => s.status === 'processing').length
-  const pendingCount = sessions.filter((s) => s.status === 'pending').length
+  const totalCount = stats.total
+  const completedCount = stats.completed
+  const processingCount = stats.processing
+  const pendingCount = stats.pending
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">

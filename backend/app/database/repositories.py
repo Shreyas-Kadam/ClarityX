@@ -42,9 +42,14 @@ logger = logging.getLogger("clarityx.repositories")
 class BaseRepository:
     """Base repository handling client access and common error translation."""
 
+    def __init__(self, client: Optional[Any] = None):
+        self._client = client
+
     @property
     def client(self):
         """Retrieves the active Supabase client."""
+        if getattr(self, "_client", None) is not None:
+            return self._client
         return get_supabase_client()
 
     def handle_db_error(self, operation: str, exc: Exception) -> None:
@@ -175,7 +180,9 @@ class ResearchRepository(BaseRepository):
         evidence_repo: Optional[Any] = None,
         verification_repo: Optional[Any] = None,
         source_repo: Optional[Any] = None,
+        client: Optional[Any] = None,
     ):
+        super().__init__(client=client)
         self._finding_repo = finding_repo
         self._evidence_repo = evidence_repo
         self._verification_repo = verification_repo
@@ -293,6 +300,36 @@ class ResearchRepository(BaseRepository):
         except Exception as exc:
             logger.warning(f"Error counting user sessions: {type(exc).__name__}")
             return 0
+
+    async def get_user_session_counts(self, user_id: str) -> Dict[str, int]:
+        """Calculates session count breakdown across all statuses for the authenticated user."""
+        try:
+            def _build_and_run():
+                return (
+                    self.client.table("research_sessions")
+                    .select("status")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+
+            response = await anyio.to_thread.run_sync(_build_and_run)
+            counts = {
+                "total": 0,
+                "completed": 0,
+                "processing": 0,
+                "pending": 0,
+                "failed": 0,
+            }
+            if response.data:
+                counts["total"] = len(response.data)
+                for item in response.data:
+                    st = item.get("status")
+                    if st in counts:
+                        counts[st] += 1
+            return counts
+        except Exception as exc:
+            logger.warning(f"Error fetching user session counts: {type(exc).__name__}")
+            return {"total": 0, "completed": 0, "processing": 0, "pending": 0, "failed": 0}
 
     async def update_session(
         self, session_id: str, user_id: str, updates: Dict[str, Any]
@@ -412,6 +449,8 @@ class ResearchRepository(BaseRepository):
             sources=sources_list,
             unresolved_questions=unresolved_questions,
             verification_items=verification_items,
+            created_at=session.get("created_at"),
+            updated_at=session.get("updated_at"),
         )
 
 

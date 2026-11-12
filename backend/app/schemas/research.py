@@ -196,8 +196,30 @@ class ResearchReportData(BaseModel):
     sources: List[SourcePreviewResponse] = Field(default_factory=list)
     unresolved_questions: List[UnresolvedQuestionResponse] = Field(default_factory=list)
     verification_items: List[VerificationItemResponse] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ResearchStatsData(BaseModel):
+    """Breakdown of research sessions across all lifecycle statuses."""
+
+    total: int = 0
+    completed: int = 0
+    processing: int = 0
+    pending: int = 0
+    failed: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResearchStatsEnvelope(BaseModel):
+    """Standard API envelope for research session statistics."""
+
+    success: bool = True
+    message: Optional[str] = "Research statistics retrieved successfully"
+    data: ResearchStatsData
 
 
 class ResearchReportEnvelope(BaseModel):

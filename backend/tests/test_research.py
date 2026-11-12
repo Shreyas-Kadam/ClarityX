@@ -23,6 +23,8 @@ from app.schemas.research import (
     ResearchReportData,
     ResearchReportEnvelope,
     ResearchSessionResponse,
+    ResearchStatsData,
+    ResearchStatsEnvelope,
     UnresolvedQuestionResponse,
     VerificationItemResponse,
 )
@@ -1074,6 +1076,7 @@ async def test_database_failure_returns_sanitized_error():
     [
         ("POST", "/api/research"),
         ("GET", "/api/research"),
+        ("GET", "/api/research/stats"),
         ("GET", "/api/research/11111111-2222-3333-4444-555555555555"),
         ("PATCH", "/api/research/11111111-2222-3333-4444-555555555555"),
         ("DELETE", "/api/research/11111111-2222-3333-4444-555555555555"),
@@ -1087,4 +1090,159 @@ async def test_unauthenticated_research_endpoints_receive_401(method: str, path:
         response = await client.request(method, path)
         assert response.status_code == 401
         assert response.json()["success"] is False
+
+
+# =============================================================================
+# 9. INTEGRATION AUDIT REGRESSION TESTS (P1 & P2 FIXES)
+# =============================================================================
+
+def test_research_report_timestamp_serialization_and_compatibility():
+    """Validates that ResearchReportData serializes timestamps correctly and maintains backwards compatibility."""
+    s_uuid = uuid4()
+    created_dt = datetime(2026, 11, 10, 8, 30, 0, tzinfo=timezone.utc)
+    updated_dt = datetime(2026, 11, 10, 9, 45, 0, tzinfo=timezone.utc)
+
+    # 1. Fully populated timestamps serialize cleanly to ISO-8601
+    report_with_timestamps = ResearchReportData(
+        research_id=s_uuid,
+        research_goal="Investigate battery solid-state electrolytes",
+        status="completed",
+        summary="High-conductivity electrolytes analyzed.",
+        created_at=created_dt,
+        updated_at=updated_dt,
+    )
+    dumped = report_with_timestamps.model_dump(mode="json")
+    assert dumped["created_at"] == "2026-11-10T08:30:00Z"
+    assert dumped["updated_at"] == "2026-11-10T09:45:00Z"
+
+    envelope = ResearchReportEnvelope(success=True, data=report_with_timestamps)
+    env_dumped = envelope.model_dump(mode="json")
+    assert env_dumped["data"]["created_at"] == "2026-11-10T08:30:00Z"
+
+    # 2. Backwards compatibility: Null/omitted timestamps default to None and serialize to null
+    report_null_timestamps = ResearchReportData(
+        research_id=s_uuid,
+        research_goal="Legacy research goal without timestamps",
+        status="completed",
+    )
+    assert report_null_timestamps.created_at is None
+    assert report_null_timestamps.updated_at is None
+    dumped_null = report_null_timestamps.model_dump(mode="json")
+    assert dumped_null["created_at"] is None
+    assert dumped_null["updated_at"] is None
+
+    # 3. Model validation from dict containing ISO strings works seamlessly
+    raw_dict = {
+        "research_id": str(s_uuid),
+        "research_goal": "Goal from raw dict",
+        "status": "completed",
+        "created_at": "2026-11-12T10:15:30.123456+00:00",
+        "updated_at": "2026-11-12T10:20:00+00:00",
+    }
+    validated = ResearchReportData.model_validate(raw_dict)
+    assert isinstance(validated.created_at, datetime)
+    assert isinstance(validated.updated_at, datetime)
+    assert validated.created_at.year == 2026
+
+
+@pytest.mark.anyio
+async def test_get_research_stats_endpoint_success():
+    """GET /api/research/stats returns session statistics scoped to the user."""
+    mock_auth_user = create_mock_auth_user()
+    mock_client = MagicMock()
+    mock_client.auth.get_user = MagicMock(return_value=mock_auth_user)
+
+    transport = ASGITransport(app=app)
+    with (
+        patch("app.dependencies.auth.get_supabase_client", return_value=mock_client),
+        patch.object(ResearchRepository, "get_user_session_counts", new_callable=AsyncMock) as mock_counts,
+    ):
+        mock_counts.return_value = {
+            "total": 12,
+            "completed": 8,
+            "processing": 2,
+            "pending": 2,
+            "failed": 0,
+        }
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/api/research/stats",
+                headers={"Authorization": "Bearer test-jwt-token"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["total"] == 12
+            assert data["data"]["completed"] == 8
+            assert data["data"]["processing"] == 2
+            assert data["data"]["pending"] == 2
+            assert data["data"]["failed"] == 0
+
+            # Verify repository was called with authenticated user's ID
+            mock_counts.assert_awaited_once_with(
+                user_id=mock_auth_user.user.id
+            )
+
+
+@pytest.mark.anyio
+async def test_repository_get_user_session_counts():
+    """ResearchRepository.get_user_session_counts correctly tallies status counts."""
+    mock_supabase = MagicMock()
+    # Mocking PostgREST response with multiple sessions across different statuses
+    mock_execute = MagicMock()
+    mock_execute.data = [
+        {"status": "completed"},
+        {"status": "completed"},
+        {"status": "completed"},
+        {"status": "processing"},
+        {"status": "pending"},
+        {"status": "failed"},
+    ]
+    mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_execute
+
+    repo = ResearchRepository(client=mock_supabase)
+    counts = await repo.get_user_session_counts(user_id="test-user-uuid")
+
+    assert counts["total"] == 6
+    assert counts["completed"] == 3
+    assert counts["processing"] == 1
+    assert counts["pending"] == 1
+    assert counts["failed"] == 1
+
+
+@pytest.mark.anyio
+async def test_get_research_report_populates_timestamps():
+    """ResearchRepository.get_research_report correctly attaches created_at and updated_at."""
+    session_id = str(uuid4())
+    user_id = str(uuid4())
+    created_dt_str = "2026-11-01T10:00:00+00:00"
+    updated_dt_str = "2026-11-01T11:00:00+00:00"
+
+    mock_supabase = MagicMock()
+    repo = ResearchRepository(client=mock_supabase)
+
+    # Mock get_session_by_id return
+    repo.get_session_by_id = AsyncMock(
+        return_value={
+            "id": session_id,
+            "research_goal": "Telemetry and Abort Analysis",
+            "status": "completed",
+            "summary": "Full summary.",
+            "created_at": created_dt_str,
+            "updated_at": updated_dt_str,
+        }
+    )
+    repo.finding_repo.get_findings_by_session = AsyncMock(return_value=[])
+    repo.verification_repo.list_items_by_session = AsyncMock(return_value=[])
+    repo.source_repo.list_sources = AsyncMock(return_value={"sources": []})
+
+    report = await repo.get_research_report(session_id=session_id, user_id=user_id)
+    assert report is not None
+    assert report.created_at is not None
+    assert report.updated_at is not None
+    assert report.created_at.year == 2026
+    assert report.updated_at.hour == 11
+
 

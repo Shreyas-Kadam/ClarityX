@@ -281,8 +281,9 @@ class AIService:
         if client:
             self.client = client
         elif self.settings.is_ai_configured:
+            api_key = (self.settings.OPENROUTER_API_KEY or "").strip()
             self.client = AsyncOpenAI(
-                api_key=self.settings.OPENROUTER_API_KEY,
+                api_key=api_key,
                 base_url=self.base_url,
                 timeout=self.timeout,
                 default_headers={

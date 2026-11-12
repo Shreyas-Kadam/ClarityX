@@ -28,6 +28,16 @@ export async function getResearchSessions({ limit = 10, offset = 0, status = nul
 }
 
 /**
+ * Retrieves summary statistics across all research sessions for the authenticated user.
+ * Calls GET /api/research/stats
+ *
+ * @returns {Promise<{success: boolean, message?: string, data: {total: number, completed: number, processing: number, pending: number, failed: number}}>}
+ */
+export async function getResearchStats() {
+  return await apiFetch('/api/research/stats')
+}
+
+/**
  * Retrieves a single research session by ID.
  * Calls GET /api/research/:id
  *

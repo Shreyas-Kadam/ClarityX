@@ -453,7 +453,7 @@ export function ResearchDetailPage() {
             AI Information Gap Analysis in Progress
           </div>
           <p className="text-xs leading-relaxed text-[#2B2D42]">
-            AI Information Gap Analysis in progress. Cross-referencing your source material and detecting missing, outdated, conflicting, and unverified information. This may take up to 35 seconds.
+            AI Information Gap Analysis in progress. Cross-referencing your source material and detecting missing, outdated, conflicting, and unverified information. This may take up to 60 seconds.
           </p>
         </div>
       )}
