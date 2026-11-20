@@ -15,6 +15,7 @@ import {
   Calendar,
   Clock,
   Layers,
+  User,
 } from 'lucide-react'
 import { NeuButton } from '@/components/common/NeuButton'
 import { SourceStatusBadge } from './SourceStatusBadge'
@@ -294,6 +295,7 @@ export function SourceViewerModal({
     : (activeSource?.word_count || 0)
 
   const publishedFormatted = formatTimestamp(activeSource?.published_at)
+  const lastUpdatedFormatted = formatTimestamp(activeSource?.last_updated_at)
   const accessedFormatted = formatTimestamp(activeSource?.accessed_at || activeSource?.created_at)
 
   return (
@@ -328,6 +330,14 @@ export function SourceViewerModal({
                 <TypeIcon className="size-3.5" />
                 {currentType.label}
               </span>
+              {activeSource?.domain && (
+                <span
+                  className="px-2 py-0.5 rounded-lg bg-slate-100 text-[#2B2D42] text-xs font-mono font-medium border border-slate-200"
+                  title="Source Root Domain"
+                >
+                  {activeSource.domain}
+                </span>
+              )}
               {activeSource?.extraction_status && (
                 <SourceStatusBadge status={activeSource.extraction_status} />
               )}
@@ -340,6 +350,23 @@ export function SourceViewerModal({
             >
               {activeSource?.title || 'Untitled Source'}
             </h3>
+
+            {/* Author / Publisher Attribution */}
+            {(activeSource?.author || activeSource?.publisher) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[#8D99AE] pt-0.5">
+                {activeSource.author && (
+                  <span className="inline-flex items-center gap-1 text-[#2B2D42] font-medium" title="Author">
+                    <User className="size-3 text-[#8D99AE]" />
+                    {activeSource.author}
+                  </span>
+                )}
+                {activeSource.publisher && (
+                  <span className="text-[#8D99AE]" title="Publisher">
+                    via {activeSource.publisher}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* URL Display with External Link and Copy Action */}
             {activeSource?.url && (
@@ -397,6 +424,13 @@ export function SourceViewerModal({
           className="px-5 py-2.5 bg-slate-100/70 border-b border-slate-200 text-xs text-[#8D99AE] flex flex-wrap items-center justify-between gap-3 shrink-0"
         >
           <div className="flex flex-wrap items-center gap-4">
+            {activeSource?.domain && (
+              <span className="flex items-center gap-1" title="Source Root Domain">
+                <Globe className="size-3.5 text-[#8D99AE]" />
+                <strong className="text-[#2B2D42] font-semibold">{activeSource.domain}</strong>
+              </span>
+            )}
+
             <span className="flex items-center gap-1" title="Word count">
               <FileText className="size-3.5 text-[#8D99AE]" />
               <strong className="text-[#2B2D42] font-semibold">{wordCount.toLocaleString()}</strong> words
@@ -414,10 +448,22 @@ export function SourceViewerModal({
               </span>
             )}
 
-            {publishedFormatted && (
+            {publishedFormatted ? (
               <span className="flex items-center gap-1" title="Publication Date">
                 <Calendar className="size-3.5 text-[#8D99AE]" />
                 Published: {publishedFormatted}
+              </span>
+            ) : activeSource?.source_type === 'website' ? (
+              <span className="flex items-center gap-1 text-[#8D99AE]/70" title="Publication Date Undetermined">
+                <Calendar className="size-3.5 text-[#8D99AE]" />
+                Date: Undetermined
+              </span>
+            ) : null}
+
+            {lastUpdatedFormatted && (
+              <span className="flex items-center gap-1" title="Last Updated Date">
+                <RefreshCw className="size-3.5 text-[#8D99AE]" />
+                Updated: {lastUpdatedFormatted}
               </span>
             )}
 

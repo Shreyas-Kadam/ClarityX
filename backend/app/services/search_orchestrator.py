@@ -240,7 +240,11 @@ class SearchOrchestrationService:
                     extracted_content=result.extracted_content,
                     title=result.title or candidate.title or "Untitled Source",
                     url=result.url or candidate.url,
+                    author=result.author,
+                    publisher=result.publisher,
+                    domain=result.domain,
                     published_at=result.published_at,
+                    last_updated_at=result.last_updated_at,
                     extraction_status=result.extraction_status,
                 )
             except (ClarityXException, DatabaseConnectionError) as exc:

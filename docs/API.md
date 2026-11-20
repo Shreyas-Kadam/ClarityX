@@ -170,7 +170,11 @@ Expected response:
         "url": "https://example.com/scholarship",
         "source_type": "website",
         "content_preview": "Scholarships will be awarded for the upcoming academic year. Eligibility criteria include...",
+        "author": "Admissions Committee",
+        "publisher": "Example University",
+        "domain": "example.com",
         "published_at": "2026-01-15T00:00:00Z",
+        "last_updated_at": "2026-02-01T12:00:00Z",
         "extraction_status": "success"
       }
     ],
@@ -288,7 +292,11 @@ Expected response:
         "url": "https://example.com/scholarship",
         "source_type": "website",
         "content_preview": "Scholarships will be awarded for the upcoming academic year. Eligibility criteria include...",
+        "author": "Admissions Committee",
+        "publisher": "Example University",
+        "domain": "example.com",
         "published_at": "2026-01-15T00:00:00Z",
+        "last_updated_at": "2026-02-01T12:00:00Z",
         "extraction_status": "success"
       }
     ],
@@ -363,7 +371,11 @@ Expected response:
     "url": "https://example.com/article",
     "source_type": "website",
     "extracted_content": "Extracted text content from the article...",
+    "author": "Jane Doe",
+    "publisher": "Tech Daily",
+    "domain": "example.com",
     "published_at": null,
+    "last_updated_at": null,
     "extraction_status": "success"
   }
 }

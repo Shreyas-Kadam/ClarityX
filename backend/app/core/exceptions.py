@@ -84,6 +84,18 @@ class UnsupportedContentTypeError(ClarityXException):
         super().__init__(message=message, status_code=415, detail=detail or message)
 
 
+class IsPdfUrlError(ClarityXException):
+    """Internal signal indicating an HTTP endpoint serves a PDF document instead of an HTML page."""
+
+    def __init__(self, final_url: str):
+        super().__init__(
+            message="Requested URL points to a PDF document.",
+            status_code=200,
+            detail=final_url,
+        )
+        self.final_url = final_url
+
+
 class ExtractionError(ClarityXException):
     """Raised when content extraction fails across both primary and fallback extractors."""
 

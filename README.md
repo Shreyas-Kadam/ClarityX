@@ -1,181 +1,190 @@
-# ClarityX 🔍
+# ClarityX
 
-### AI-Powered Information Gap Detection Platform
+### AI-Assisted Information Gap Detection Platform
 
-> Don't just tell users what you found. Tell them what you haven't found.
+> **Don't just discover what exists. Expose what's missing.**
 
-## 📌 Overview
+ClarityX is an AI-assisted research platform built for the **Digital Dark Spot** problem statement at **SHINCHAN ONLINE HACKATHON 2026**. It helps users examine information collected from multiple sources and identify potential gaps, conflicting claims, outdated details, unverified statements, and questions that still need investigation.
 
-ClarityX is an AI-powered platform designed to identify information gaps across multiple digital sources.
+Rather than presenting an AI-generated summary as the complete answer, ClarityX makes the available evidence and remaining uncertainties visible so users can decide what to verify next.
 
-When researching a topic, users often encounter missing information, outdated content, conflicting claims, and unverified statements.
+---
 
-Traditional search engines help users discover information, but they do not always highlight what is missing or what still needs verification.
+## Overview
 
-ClarityX addresses this challenge by analysing multiple sources and generating structured research reports that highlight available information, identify gaps, and recommend what users should investigate next.
+People use online information to make decisions about education, careers, public services, research, and business. However, relevant details are often scattered across websites and documents. Sources can disagree, become outdated, or leave important questions unanswered.
 
-## 🎯 Problem Statement
+ClarityX brings source collection, extraction, AI-assisted analysis, evidence references, and verification tasks into one research workflow.
 
-**Digital Dark Spot – AI-Assisted Information Gap Detection Platform**
+## Key Features
 
-Information is scattered across multiple digital sources. Determining whether that information is complete, current, consistent, and supported by evidence requires considerable manual effort.
+- **Research sessions** — create and manage research objectives and revisit previous investigations.
+- **Multi-source ingestion** — add website URLs, paste research notes, or upload PDF and DOCX documents.
+- **Content extraction** — extract readable website and document content for analysis, with an alternative website-reading fallback where supported.
+- **AI-assisted gap detection** — organize potential findings into four categories:
+  - `missing` — relevant information not found in the available sources.
+  - `outdated` — information that may no longer be current.
+  - `conflicting` — claims or details that appear to disagree across sources.
+  - `unverified` — claims that do not have sufficient supporting evidence in the reviewed material.
+- **Evidence references** — display supporting source references and quotations for findings where available.
+- **Verification checklist** — turn identified gaps into tasks that users can complete and track.
+- **Unresolved research questions** — keep broader questions visible when the available sources do not answer them.
+- **Research summary and conclusion** — present an overview of what the reviewed material supports and what still requires validation.
+- **Research history** — save and retrieve previous research sessions.
 
-ClarityX aims to make these information gaps visible through AI-assisted research analysis.
+> **Important:** ClarityX is a research-assistance tool. Its findings are signals for further investigation, not guaranteed facts or a substitute for checking authoritative sources. A source that could not be accessed or extracted should not be treated as evidence that the information does not exist.
 
-## 🚦 Project Status
+---
 
-- **Status:** Phase 1 Backend Foundation, Phase 2 Supabase Database Setup, Phase 3 Authentication & Research Session Persistence, and Phase 4 (Checkpoint 1 UI Design System & Checkpoint 2 Frontend Auth & Backend Integration) implemented.
-- **Implemented:**
-  - Complete architectural specifications, database schemas, and API documentation in `docs/`.
-  - **FastAPI backend foundation (Phase 1):** Modular application structure, centralized settings, CORS middleware for `localhost:5173`, standardized JSON exception handling, `GET /` and `GET /health` endpoints, and automated pytest suite.
-  - **Supabase Database Setup (Phase 2):** Centralized Supabase client with safe URL normalization, administrative client integration, pre-table live connectivity verification CLI (`python -m app.database.supabase`), initial schema migration (`001_initial_schema.sql` with 6 tables, cascade foreign keys, cross-session validation triggers, `auth.users` profile synchronization, 9 performance indexes, and comprehensive Row Level Security policies), database repository abstractions (`BaseRepository`, `ProfileRepository`, `ResearchRepository`), and automated database test suite.
-  - **Authentication & Research Persistence (Phase 3):** Supabase Auth JWT token verification dependency (`get_current_user`), `GET /api/auth/me` user profile route, full authenticated CRUD for research sessions (`GET /api/research`, `POST /api/research`, `GET /api/research/{id}`, `PATCH /api/research/{id}`, `DELETE /api/research/{id}`), with 70 passing backend pytest tests.
-  - **Frontend UI Design System (Phase 4, Checkpoint 1):** Modern React 19 + Vite frontend implementing the 5-color palette (`#2B2D42`, `#8D99AE`, `#EDF2F4`, `#EF233C`, `#D90429`), hybrid Glassmorphism + Neumorphism tactile surfaces, responsive layouts with desktop sidebar and mobile navigation drawer.
-  - **Frontend Auth & Backend Integration (Phase 4, Checkpoint 2):** Supabase client (`@supabase/supabase-js`), centralized `AuthContext` with session restore on reload and automatic token injection, `LoginPage` and `RegisterPage` with email confirmation awareness and validation, protected routing (`ProtectedRoute` and `PublicOnlyRoute`), backend profile integration (`GET /api/auth/me`), and live connection of all 5 views to real FastAPI database endpoints (zero mock/sample data fallback). End-to-end multi-user Row Level Security isolation verified.
-- **Not Yet Implemented (Planned):**
-  - Source extraction service (Trafilatura / Jina Reader) and optional DuckDuckGo search discovery (Phase 5).
-  - OpenRouter AI analysis engine, evidence quote verification, and research gap detection persistence (Phase 6).
+## Application Workflow
 
-## ✨ Key Features (Planned)
+1. **Create a research session** — enter a clear topic, question, or research objective.
+2. **Add sources** — provide website URLs, paste text, or upload supported documents.
+3. **Review extracted content** — check which sources were successfully extracted and which could not be processed.
+4. **Run gap analysis** — ClarityX analyzes usable source content and organizes potential findings.
+5. **Inspect evidence** — open source material and review the quotations associated with findings.
+6. **Verify what is missing** — use the checklist and unresolved questions to guide further research.
 
-- **Multi-Source Analysis:** Analyse information from multiple URLs and supported text inputs.
-- **Missing Information Detection:** Identify important information that is absent from available sources.
-- **Outdated Information Detection:** Highlight potentially outdated information using available dates and context.
-- **Conflict Detection:** Identify disagreements between different sources.
-- **Unverified Claims:** Highlight claims that lack sufficient supporting evidence.
-- **Evidence and Citations:** Connect findings to relevant sources and evidence excerpts.
-- **Verification Checklist:** Generate actionable tasks for unresolved information.
-- **Research History:** Save and revisit previous research reports.
+---
 
-## 🛠️ Technology Stack
+## Technology Stack
 
-### Frontend
+| Layer | Technologies |
+|---|---|
+| Frontend | React, Vite, JavaScript (JSX) |
+| Styling and UI | Tailwind CSS v4, shadcn/ui, Base UI, Lucide React |
+| Backend | Python, FastAPI, Pydantic, Uvicorn |
+| Database | Supabase, PostgreSQL |
+| Authentication | Supabase Auth |
+| AI integration | OpenRouter |
+| Website extraction | Trafilatura, Jina Reader fallback |
+| Document extraction | PDF and DOCX extraction |
+| Search | DuckDuckGo Search |
+| HTTP requests | HTTPX |
 
-- React
-- Vite
-- JavaScript (JSX)
-- Tailwind CSS v4
-- shadcn/ui
-- Base UI
-- Lucide React
+---
 
-### Backend
+## Architecture
 
-- Python
-- FastAPI
-- Pydantic
-- Uvicorn
+ClarityX uses a modular client-server architecture.
 
-### Database
-
-- Supabase
-- PostgreSQL
-- Supabase Authentication
-
-### AI and Integrations
-
-- OpenRouter
-- Trafilatura
-- Jina Reader
-- DuckDuckGo Search
-- HTTPX
-
-## 🏗️ System Architecture
-
-```mermaid
-flowchart TD
-    A[User] --> B[React Frontend]
-    B --> C[FastAPI Backend]
-
-    C --> D[Research Processing]
-
-    D --> E[Source Extraction]
-    D --> F[Search Service]
-    D --> G[AI Analysis]
-
-    E --> H[External Websites]
-    F --> I[Search Provider]
-    G --> J[OpenRouter]
-
-    D --> K[Supabase Client]
-    K --> L[(Supabase PostgreSQL)]
-
-    D --> C
-    C --> B
+```text
+                         ┌──────────────────────┐
+                         │       User           │
+                         └──────────┬───────────┘
+                                    │
+                         ┌──────────▼───────────┐
+                         │   React + Vite UI    │
+                         │   JavaScript / JSX   │
+                         └──────────┬───────────┘
+                                    │ REST API
+                         ┌──────────▼───────────┐
+                         │    FastAPI Backend   │
+                         └──────────┬───────────┘
+                                    │
+              ┌─────────────────────┼──────────────────────┐
+              │                     │                      │
+     ┌────────▼────────┐  ┌─────────▼────────┐   ┌─────────▼────────┐
+     │ Source Extraction│  │ AI Analysis     │   │ Search Service   │
+     │ Websites/Files   │  │ OpenRouter      │   │ DuckDuckGo       │
+     └─────────────────┘  └──────────────────┘   └──────────────────┘
+                                    │
+                         ┌──────────▼───────────┐
+                         │ Supabase PostgreSQL │
+                         │ Research & Evidence │
+                         └──────────────────────┘
 ```
 
-## 📁 Project Structure
+---
+
+## Project Structure
 
 ```text
 ClarityX/
-│
 ├── docs/
 │   ├── PRD.md
 │   ├── DESIGN.md
 │   ├── ARCHITECTURE.md
 │   ├── DATABASE.md
 │   └── API.md
-│
-├── AGENTS.md
-├── README.md
-├── .gitignore
-│
 ├── frontend/
-│   ├── src/
 │   ├── public/
+│   ├── src/
 │   ├── package.json
 │   └── vite.config.js
-│
-└── backend/
-    ├── app/
-    │   ├── routes/
-    │   ├── services/
-    │   ├── database/
-    │   ├── schemas/
-    │   └── main.py
-    │
-    ├── tests/
-    ├── requirements.txt
-    ├── .env
-    └── venv/
+├── backend/
+│   ├── app/
+│   │   ├── core/
+│   │   ├── database/
+│   │   ├── dependencies/
+│   │   ├── routes/
+│   │   ├── schemas/
+│   │   ├── services/
+│   │   └── main.py
+│   ├── tests/
+│   ├── requirements.txt
+│   └── .env.example
+├── AGENTS.md
+├── README.md
+└── .gitignore
 ```
 
-## 🚀 Getting Started
+---
 
-The following setup instructions describe the planned development environment. Backend and Supabase configuration will be completed during implementation.
+## Getting Started
 
 ### Prerequisites
 
-Install the following:
+Install the following before running the project:
 
-- Node.js and npm
-- Python 3.10 or later
+- [Node.js](https://nodejs.org/) and npm
+- Python (use a version supported by the backend dependencies)
 - Git
-- A Supabase account
+- A Supabase project
 - An OpenRouter API key
 
-### 1. Clone the Repository
+### 1. Clone the repository
+
+Replace the repository URL below with the actual GitHub repository URL.
 
 ```bash
-git clone YOUR_REPOSITORY_URL
+git clone <YOUR_GITHUB_REPOSITORY_URL>
 cd ClarityX
 ```
 
-### 2. Frontend Setup
+### 2. Configure the frontend
+
+Open a terminal in the project root:
 
 ```bash
 cd frontend
 npm install
+```
+
+Create `frontend/.env` and add your Supabase public project configuration:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+```
+
+If your Supabase project uses the legacy anon key, the frontend also supports:
+
+```env
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+Start the frontend development server:
+
+```bash
 npm run dev
 ```
 
-The frontend will be available at:
+Frontend URL: [http://localhost:5173](http://localhost:5173)
 
-`http://localhost:5173`
+### 3. Configure the backend
 
-### 3. Backend Setup
-
-Open another terminal:
+Open a second terminal from the project root:
 
 ```bash
 cd backend
@@ -188,105 +197,105 @@ Activate the virtual environment on Windows PowerShell:
 .\venv\Scripts\Activate.ps1
 ```
 
-Install dependencies:
+On macOS/Linux:
+
+```bash
+source venv/bin/activate
+```
+
+Install backend dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
+Create `backend/.env` using the provided `.env.example` as the reference. Add the required Supabase and OpenRouter configuration values from your own accounts. Keep all secrets in the backend environment.
+
 Start the backend:
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The backend will be available at:
+Backend URL: [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-`http://localhost:8000`
-
-FastAPI documentation:
-
-`http://localhost:8000/docs`
-
-### 4. Environment Variables
-
-Create a `.env` file inside the backend directory.
-
-The following variables are planned:
-
-```env
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=
-
-FRONTEND_URL=http://localhost:5173
-```
-
-- Use actual Supabase project credentials and OpenRouter API key.
-- Authentication uses Supabase Auth from the start. Access tokens are initially verified through Supabase Auth using the official Supabase Python client (`supabase.auth.get_user(token)`). Token verification must support the project's configured JWT signing method (and `SUPABASE_JWT_SECRET` is not required for the initial implementation).
-- Never commit `.env` files or expose the Supabase service-role key in frontend code.
-
-### 5. Synchronous MVP Limits
-
-For the initial release:
-- **Maximum Sources:** Up to 5 sources per research session.
-- **Request Timeout:** 60-second overall request timeout for `/api/research/analyze` (individual external extraction and AI calls have shorter timeouts).
-- **Execution Model:** Initial analysis runs synchronously; longer research sessions may transition to background task processing in a future version.
-
-## 📚 Documentation
-
-Detailed project documentation is available in the `docs/` directory.
-
-| Document | Description |
-|---|---|
-| PRD.md | Product requirements |
-| DESIGN.md | UI/UX design guidelines |
-| ARCHITECTURE.md | System architecture |
-| DATABASE.md | Database schema and relationships |
-| API.md | Backend API documentation |
-| AGENTS.md | AI coding agent instructions |
-
-## 🔐 Security
-
-- Securely store API keys and credentials.
-- Use Supabase Authentication for user accounts.
-- Apply Row Level Security to user-owned data.
-- Validate API requests and external URLs.
-- Protect against unsafe external requests.
-- Never expose sensitive backend credentials in frontend code.
-
-## 🧪 Testing
-
-The project will include:
-
-- Frontend linting and production builds.
-- Backend API testing.
-- Database operation testing.
-- AI response validation.
-- Authentication and authorization testing.
-- End-to-end workflow testing.
-
-## 🔮 Future Scope
-
-- Advanced source reliability analysis.
-- More document formats.
-- Real-time research progress tracking.
-- Scheduled source monitoring.
-- Research report export.
-- Additional AI providers.
-- MCP-based integrations where useful.
-
-## 👥 Contributors
-
-Add the project team members and their respective roles here.
-
-## 📄 License
-
-License details will be added when the project license is selected.
+FastAPI interactive API documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ---
 
-**ClarityX – Making the unknown visible.**
+## Environment and Security
+
+- Do not commit `frontend/.env` or `backend/.env`.
+- Never expose the Supabase service-role key or OpenRouter API key in frontend code.
+- Use only the Supabase publishable/anon key in the browser.
+- Keep backend secrets in environment variables.
+- Apply Supabase Row Level Security (RLS) to user-owned data.
+- Treat extracted website and document content as untrusted input.
+- URL fetching must retain SSRF and unsafe-redirect protections.
+- Do not commit credentials, virtual environments, or generated build files.
+
+---
+
+## Documentation
+
+The `docs/` directory contains the deeper project documentation:
+
+| File | Description |
+|---|---|
+| `docs/PRD.md` | Product requirements and feature scope |
+| `docs/DESIGN.md` | UI/UX design guidelines |
+| `docs/ARCHITECTURE.md` | System architecture and service responsibilities |
+| `docs/DATABASE.md` | Database schema and relationships |
+| `docs/API.md` | API endpoints and request/response formats |
+| `AGENTS.md` | Instructions and development conventions for AI coding agents |
+
+---
+
+## Current Scope and Limitations
+
+- Analysis depends on the quality, relevance, and extractability of the supplied sources.
+- Some websites may block automated access. When extraction is blocked, users may need to upload the document or provide its text instead.
+- AI-generated findings can be incomplete or incorrect and should be checked against the cited source material.
+- A missing result in the collected sources does not prove that the information does not exist elsewhere.
+- The project should not be treated as a replacement for expert review or authoritative verification.
+
+---
+
+## Future Scope
+
+Potential directions for further development include:
+
+- More source types and extraction options.
+- Deeper source reliability and freshness analysis.
+- Background processing for longer research sessions.
+- Research report export and sharing.
+- Real-time progress updates.
+- Scheduled source monitoring.
+- Additional AI providers and integrations.
+
+---
+
+## Hackathon
+
+**Event:** SHINCHAN ONLINE HACKATHON 2026  
+**Official Problem Statement:** DIGITAL DARK SPOT  
+**Challenge:** AI-Assisted Information Gap Detection Platform  
+**Participation:** Individual
+
+ClarityX was developed as a solution to the challenge of identifying potential information gaps, conflicting claims, outdated details, and unanswered questions across multiple sources.
+
+---
+
+## Acknowledgements
+
+Developed as part of SHINCHAN ONLINE HACKATHON 2026. Thanks to the organizers for the opportunity to learn, build, and experiment.
+
+---
+
+## License
+
+No license has been specified yet. If you intend to make this repository open source, add a suitable `LICENSE` file before presenting it as reusable open-source software.
+
+---
+
+**ClarityX — Don't just tell users what you found. Tell them what you haven't found.**

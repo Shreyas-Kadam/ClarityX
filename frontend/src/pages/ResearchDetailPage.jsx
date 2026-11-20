@@ -32,6 +32,7 @@ import {
   VerificationChecklist,
   UnresolvedQuestionsList,
 } from '@/components/verification'
+import { ResearchConclusionCard } from '@/components/research/ResearchConclusionCard'
 import { ResearchConclusionPrint } from '@/components/research/ResearchConclusionPrint'
 
 /**
@@ -640,8 +641,17 @@ export function ResearchDetailPage() {
 
       {/* Tab Panels */}
       {activeTab === 'summary' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <GlassCard className="p-5 space-y-3">
+        <div className="space-y-6">
+          {hasReport && (
+            <ResearchConclusionCard
+              session={session}
+              sources={sources}
+              onNavigateTab={setActiveTab}
+            />
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <GlassCard className="p-5 space-y-3">
             <h3 className="font-heading font-semibold text-sm text-[#2B2D42] flex items-center gap-2">
               <CheckCircle className="size-4 text-emerald-600" />
               Investigation Overview
@@ -701,6 +711,7 @@ export function ResearchDetailPage() {
               </div>
             </div>
           </GlassCard>
+        </div>
         </div>
       )}
 

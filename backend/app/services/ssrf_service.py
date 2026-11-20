@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     ContentSizeExceededError,
     ExtractionError,
+    IsPdfUrlError,
     SSRFSecurityError,
     UnsupportedContentTypeError,
 )
@@ -73,7 +74,12 @@ ALLOWED_CONTENT_TYPES: Set[str] = {
     "text/plain",
     "application/xml",
     "text/xml",
+    "application/pdf",
+    "application/x-pdf",
 }
+
+# RFC 6052 Well-Known Prefix for IPv4/IPv6 translation
+NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 
 
 def validate_ip_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
@@ -81,13 +87,20 @@ def validate_ip_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> No
 
     Blocks loopback, private, link-local, multicast, reserved, unspecified,
     and cloud instance metadata IPs.
+    Unpacks IPv4-mapped IPv6 (::ffff:0:0/96) and RFC 6052 NAT64 prefixes (64:ff9b::/96)
+    so embedded public IPv4 addresses are verified and permitted, while embedded
+    private or loopback IPs fail closed.
 
     Raises:
         SSRFSecurityError: If IP address is in a prohibited range.
     """
     # Unpack IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        elif ip in NAT64_WELL_KNOWN_PREFIX:
+            # Unpack RFC 6052 embedded IPv4 address (last 32 bits)
+            ip = ipaddress.IPv4Address(ip.packed[-4:])
 
     ip_str = str(ip)
 
@@ -304,6 +317,39 @@ class SSRFProtectedTransport(httpx.AsyncHTTPTransport):
         )
 
 
+def build_request_headers(target_url: str, is_pdf: bool = False) -> dict:
+    """Builds appropriate, security-conscious HTTP request headers for web requests."""
+    settings = get_settings()
+    parsed = urlsplit(target_url)
+    hostname = (parsed.hostname or "").lower()
+
+    if hostname.endswith("sec.gov"):
+        # SEC EDGAR automated compliance requirement: declared identity with contact email
+        user_agent = getattr(
+            settings,
+            "SEC_USER_AGENT",
+            f"ClarityXResearch/0.1.0 ({getattr(settings, 'SEC_CONTACT_EMAIL', 'research@clarityx.ai')})",
+        )
+    else:
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36 (compatible; ClarityX/0.1.0; +https://github.com/ClarityX; contact@clarityx.dev)"
+        )
+
+    accept = (
+        "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8"
+        if is_pdf
+        else "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,application/pdf;q=0.7,*/*;q=0.5"
+    )
+
+    return {
+        "User-Agent": user_agent,
+        "Accept": accept,
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+    }
+
+
 async def fetch_website_content(
     target_url: str,
     max_content_length: Optional[int] = None,
@@ -325,6 +371,7 @@ async def fetch_website_content(
         SSRFSecurityError: If any target or redirect URL violates SSRF rules.
         ContentSizeExceededError: If response body exceeds content limit.
         UnsupportedContentTypeError: If target MIME type is not HTML/text.
+        IsPdfUrlError: If target URL serves a PDF document stream.
         ExtractionError: If network connection or HTTP request fails.
     """
     settings = get_settings()
@@ -338,11 +385,7 @@ async def fetch_website_content(
     transport = SSRFProtectedTransport()
     client_timeout = httpx.Timeout(timeout, connect=timeout)
 
-    headers = {
-        "User-Agent": settings.USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
-        "Accept-Encoding": "gzip, deflate",
-    }
+    headers = build_request_headers(target_url, is_pdf=False)
 
     async with httpx.AsyncClient(
         transport=transport,
@@ -406,6 +449,12 @@ async def fetch_website_content(
             # 4. Validate Content-Type
             content_type_header = response.headers.get("content-type", "").lower()
             mime_type = content_type_header.split(";")[0].strip()
+
+            # Detect PDF response stream and signal dedicated PDF document processing
+            if mime_type in ("application/pdf", "application/x-pdf"):
+                await response.aclose()
+                raise IsPdfUrlError(final_url=str(response.url))
+
             if mime_type and mime_type not in ALLOWED_CONTENT_TYPES:
                 await response.aclose()
                 raise UnsupportedContentTypeError(
@@ -451,3 +500,133 @@ async def fetch_website_content(
                 decoded_text = raw_bytes.decode("utf-8", errors="replace")
 
             return decoded_text, str(response.url), response.status_code
+
+
+async def fetch_pdf_document(
+    target_url: str,
+    max_file_size: Optional[int] = None,
+    timeout_seconds: Optional[float] = None,
+    max_redirects: Optional[int] = None,
+) -> Tuple[bytes, str]:
+    """Securely downloads a PDF document stream using SSRF-protected HTTPX transport.
+
+    Enforces:
+    - Initial and redirect URL validation.
+    - SSRF destination checks on every redirect hop.
+    - PDF size limit (defaults to MAX_DOCUMENT_FILE_SIZE = 10 MB).
+    - PDF magic-byte validation (b"%PDF-").
+
+    Returns:
+        Tuple of (pdf_bytes, final_url)
+
+    Raises:
+        SSRFSecurityError: If any target or redirect URL violates SSRF rules.
+        ContentSizeExceededError: If PDF exceeds max_file_size limit.
+        ExtractionError: If download fails or content is not a valid PDF.
+    """
+    settings = get_settings()
+    max_bytes = max_file_size or settings.MAX_DOCUMENT_FILE_SIZE
+    timeout = timeout_seconds or settings.WEBSITE_EXTRACTION_TIMEOUT
+    max_hops = max_redirects if max_redirects is not None else settings.MAX_REDIRECTS
+
+    current_url = target_url
+    redirect_count = 0
+
+    transport = SSRFProtectedTransport()
+    client_timeout = httpx.Timeout(timeout, connect=timeout)
+
+    headers = build_request_headers(target_url, is_pdf=True)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        timeout=client_timeout,
+        follow_redirects=False,
+        headers=headers,
+    ) as client:
+        while True:
+            validate_url_syntax(current_url)
+
+            try:
+                request = client.build_request("GET", current_url)
+                response = await client.send(request, stream=True)
+            except (SSRFSecurityError, ContentSizeExceededError):
+                raise
+            except httpx.TimeoutException as exc:
+                raise ExtractionError(
+                    message=f"Request to download PDF timed out after {timeout} seconds.",
+                    status_code=504,
+                ) from exc
+            except httpx.RequestError as exc:
+                logger.warning(f"HTTP error fetching PDF from {current_url}: {type(exc).__name__}")
+                raise ExtractionError(
+                    message="Unable to establish a secure connection to download the requested PDF.",
+                    status_code=502,
+                ) from exc
+
+            # Handle redirects
+            if response.status_code in (301, 302, 303, 307, 308):
+                redirect_count += 1
+                await response.aclose()
+
+                if redirect_count > max_hops:
+                    raise SSRFSecurityError(
+                        f"Too many redirects: exceeded maximum allowable limit of {max_hops}."
+                    )
+
+                location = response.headers.get("location")
+                if not location:
+                    raise ExtractionError(
+                        message="Redirect response received without a Location header.",
+                        status_code=502,
+                    )
+
+                next_url = urljoin(current_url, location)
+                current_url = next_url
+                continue
+
+            if response.status_code != 200:
+                status = response.status_code
+                await response.aclose()
+                raise ExtractionError(
+                    message=f"PDF download returned unsuccessful status code: {status}",
+                    status_code=status if status in (403, 404, 410, 500, 502, 503) else 502,
+                )
+
+            # Check declared content-length
+            content_length_header = response.headers.get("content-length")
+            if content_length_header:
+                try:
+                    declared_len = int(content_length_header)
+                    if declared_len > max_bytes:
+                        await response.aclose()
+                        raise ContentSizeExceededError(
+                            message=f"PDF size ({declared_len} bytes) exceeds limit of {max_bytes} bytes."
+                        )
+                except ValueError:
+                    pass
+
+            # Stream body with byte limit guard
+            body_chunks = []
+            total_bytes = 0
+            try:
+                async for chunk in response.aiter_bytes():
+                    total_bytes += len(chunk)
+                    if total_bytes > max_bytes:
+                        await response.aclose()
+                        raise ContentSizeExceededError(
+                            message=f"PDF exceeded maximum allowed limit of {max_bytes} bytes while downloading."
+                        )
+                    body_chunks.append(chunk)
+            finally:
+                await response.aclose()
+
+            pdf_bytes = b"".join(body_chunks)
+
+            # Verify magic bytes
+            if not pdf_bytes.startswith(b"%PDF-"):
+                raise ExtractionError(
+                    message="Downloaded file is not a valid PDF document (missing %PDF- header).",
+                    status_code=422,
+                )
+
+            return pdf_bytes, str(response.url)

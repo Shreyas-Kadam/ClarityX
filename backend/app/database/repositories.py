@@ -33,6 +33,7 @@ from app.schemas.source import (
     ALLOWED_SOURCE_TYPES,
     SourcePreviewResponse,
     make_content_preview,
+    normalize_domain,
 )
 
 
@@ -535,7 +536,11 @@ class SourceRepository(BaseRepository):
         extracted_content: str,
         title: str = "Untitled Source",
         url: Optional[str] = None,
+        author: Optional[str] = None,
+        publisher: Optional[str] = None,
+        domain: Optional[str] = None,
         published_at: Optional[Any] = None,
+        last_updated_at: Optional[Any] = None,
         extraction_status: str = "success",
     ) -> Optional[Dict[str, Any]]:
         """Persists an extracted source with ownership verification and duplicate code retry."""
@@ -575,11 +580,21 @@ class SourceRepository(BaseRepository):
 
         safe_title = (title or "Untitled Source").strip()[:255] or "Untitled Source"
         safe_url = url.strip() if url and url.strip() else None
+        safe_author = author.strip()[:255] if author and author.strip() else None
+        safe_publisher = publisher.strip()[:255] if publisher and publisher.strip() else None
+        safe_domain = (domain.strip()[:255] if domain and domain.strip() else None) or (
+            normalize_domain(safe_url) if safe_url else None
+        )
         safe_content = extracted_content or ""
         safe_published_at = (
             published_at.isoformat()
             if hasattr(published_at, "isoformat")
             else published_at
+        )
+        safe_last_updated_at = (
+            last_updated_at.isoformat()
+            if hasattr(last_updated_at, "isoformat")
+            else last_updated_at
         )
 
         # 3. Optimistic insertion with bounded retry on unique-constraint conflict
@@ -593,7 +608,11 @@ class SourceRepository(BaseRepository):
                 "url": safe_url,
                 "source_type": source_type,
                 "extracted_content": safe_content,
+                "author": safe_author,
+                "publisher": safe_publisher,
+                "domain": safe_domain,
                 "published_at": safe_published_at,
+                "last_updated_at": safe_last_updated_at,
                 "extraction_status": extraction_status,
             }
 
@@ -607,6 +626,41 @@ class SourceRepository(BaseRepository):
             except APIError as exc:
                 err_msg = str(getattr(exc, "message", exc)).lower()
                 err_code = str(getattr(exc, "code", ""))
+
+                # If PostgREST fails because enriched columns do not exist yet on database,
+                # gracefully fall back to base columns and reattach metadata in-memory.
+                if (
+                    "column" in err_msg
+                    or "pgrst204" in err_code.lower()
+                    or "could not find the" in err_msg
+                ) and any(
+                    k in source_data
+                    for k in ("author", "publisher", "domain", "last_updated_at")
+                ):
+                    logger.warning(
+                        f"Enriched columns not present in sources table yet ({err_msg}). Falling back to base columns."
+                    )
+                    base_data = {
+                        k: v
+                        for k, v in source_data.items()
+                        if k not in ("author", "publisher", "domain", "last_updated_at")
+                    }
+                    try:
+                        fallback_resp = await anyio.to_thread.run_sync(
+                            lambda: self.client.table("sources").insert(base_data).execute()
+                        )
+                        if fallback_resp.data and len(fallback_resp.data) > 0:
+                            result_row = dict(fallback_resp.data[0])
+                            result_row["author"] = safe_author
+                            result_row["publisher"] = safe_publisher
+                            result_row["domain"] = safe_domain
+                            result_row["last_updated_at"] = safe_last_updated_at
+                            return result_row
+                        return None
+                    except Exception as fb_exc:
+                        self.handle_db_error("create_source_fallback", fb_exc)
+                        return None
+
                 # Only retry actual unique-violation conflicts (SQLSTATE 23505 or constraint name)
                 if (
                     err_code == "23505"
@@ -665,10 +719,7 @@ class SourceRepository(BaseRepository):
             def _build_and_run():
                 query = (
                     self.client.table("sources")
-                    .select(
-                        "id, research_id, source_code, title, url, source_type, extracted_content, published_at, accessed_at, extraction_status, created_at",
-                        count="exact",
-                    )
+                    .select("*", count="exact")
                     .eq("research_id", session_id)
                     .order("created_at", desc=False)
                     .range(offset, offset + limit - 1)
@@ -777,10 +828,7 @@ class SourceRepository(BaseRepository):
             def _build_and_run():
                 query = (
                     self.client.table("sources")
-                    .select(
-                        "id, research_id, source_code, title, url, source_type, "
-                        "extracted_content, published_at, accessed_at, extraction_status, created_at"
-                    )
+                    .select("*")
                     .eq("research_id", session_id)
                     .order("source_code", desc=False)
                 )
@@ -1563,6 +1611,15 @@ def map_verification_to_finding_id(
         f_title = str(f.get("title", "")).strip()
         if " ".join(f_title.split()).lower() == norm_target:
             matches.append(str(f["id"]))
+
+    # Secondary pass if no match: strip enclosing quotes, markdown, and trailing punctuation
+    if not matches:
+        clean_target = title_str.strip("'\"`*.-:; ").lower()
+        clean_target_norm = " ".join(clean_target.split())
+        for f in persisted_findings:
+            f_title = str(f.get("title", "")).strip().strip("'\"`*.-:; ").lower()
+            if " ".join(f_title.split()) == clean_target_norm:
+                matches.append(str(f["id"]))
 
     if len(matches) == 1:
         return matches[0]

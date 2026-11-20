@@ -11,7 +11,7 @@ import io
 import logging
 from pathlib import Path
 import re
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 import unicodedata
 from urllib.parse import quote, urlsplit
 import zipfile
@@ -19,6 +19,7 @@ import zipfile
 import dateutil.parser
 import docx
 import httpx
+import lxml.html
 import pypdf
 import trafilatura
 
@@ -27,6 +28,7 @@ from app.core.exceptions import (
     ContentSizeExceededError,
     EncryptedDocumentError,
     ExtractionError,
+    IsPdfUrlError,
     SSRFSecurityError,
     UnsupportedContentTypeError,
 )
@@ -34,10 +36,12 @@ from app.schemas.source import (
     DocumentExtractionResult,
     PastedTextExtractionResult,
     WebsiteExtractionResult,
+    normalize_domain,
 )
 
 from app.services.ssrf_service import (
     SSRFProtectedTransport,
+    fetch_pdf_document,
     fetch_website_content,
     validate_url_syntax,
 )
@@ -48,6 +52,28 @@ logger = logging.getLogger("clarityx.extraction")
 MIN_USEFUL_CONTENT_LENGTH = 100
 
 
+def parse_document_date(raw_date: Any) -> Optional[datetime]:
+    """Safely parses document metadata date (PDF or DOCX or ISO)."""
+    if raw_date is None:
+        return None
+    if isinstance(raw_date, datetime):
+        return raw_date
+    if not isinstance(raw_date, str):
+        return None
+    date_str = raw_date.strip()
+    if not date_str:
+        return None
+
+    # Handle PDF format: D:YYYYMMDDHHmmSS[OHH'mm']
+    if date_str.startswith("D:"):
+        date_str = date_str[2:].replace("'", "")
+
+    try:
+        return dateutil.parser.parse(date_str)
+    except Exception:
+        return None
+
+
 class WebsiteExtractor:
     """Service that coordinates secure web retrieval, Trafilatura parsing, and Jina fallback."""
 
@@ -55,108 +81,340 @@ class WebsiteExtractor:
         self.settings = get_settings()
 
     async def extract(self, url: str) -> WebsiteExtractionResult:
-        """Extracts article content from a website URL.
+        """Extracts article or document content from a website URL.
 
-        Enforces SSRF validation, applies Trafilatura extraction, and falls back
-        to Jina Reader if extracted text is insufficient (< 100 chars).
-
-        Returns:
-            WebsiteExtractionResult
-
-        Raises:
-            SSRFSecurityError: If URL violates security constraints.
-            ContentSizeExceededError: If response body exceeds limits.
-            UnsupportedContentTypeError: If MIME type is unsupported.
-            ExtractionError: If extraction fails completely across all engines.
+        Enforces resilient multi-stage fallback:
+        1. SSRF validation & protocol enforcement.
+        2. Direct PDF URL detection & processing via DocumentExtractor.
+        3. Primary Extractor: Trafilatura (extracts clean text, title, date, author, publisher).
+        4. Fallback 1: Jina Reader API (if direct fetch fails with 403/connection error, or Trafilatura returns < 100 chars).
+        5. Fallback 2: HTML Fallback Parser via lxml.html (if accessible HTML has < 100 chars in Trafilatura and Jina fails).
+        6. Helpful, actionable error handling if all engines fail (suggesting PDF/DOCX upload or pasted text).
         """
         # 1. Validate initial URL syntax and security
         validate_url_syntax(url)
 
-        # 2. Securely fetch the target website HTML
-        html_content, final_url, _ = await fetch_website_content(url)
+        domain = normalize_domain(url)
+        clean_url = url.strip()
 
-        # 3. Attempt primary extraction using Trafilatura
-        trafilatura_text, trafilatura_title, published_at = self._extract_with_trafilatura(
-            html_content=html_content, target_url=final_url
-        )
+        # 2. Check for explicit PDF URL by extension
+        path_without_query = clean_url.split("?")[0].lower()
+        if path_without_query.endswith(".pdf"):
+            return await self._extract_pdf_url(clean_url, domain)
 
-        # If Trafilatura returned sufficient content, return success
-        if trafilatura_text and len(trafilatura_text.strip()) >= MIN_USEFUL_CONTENT_LENGTH:
+        # 3. Attempt direct website fetch
+        html_content: Optional[str] = None
+        final_url: str = clean_url
+        direct_fetch_error: Optional[ExtractionError] = None
+        is_403_forbidden = False
+
+        try:
+            html_content, final_url, status = await fetch_website_content(clean_url)
+            domain = normalize_domain(final_url)
+        except IsPdfUrlError as exc:
+            # Server responded with application/pdf content stream
+            logger.info(f"Target URL {clean_url} dynamically serves PDF content. Routing to PDF extractor.")
+            return await self._extract_pdf_url(exc.final_url, domain)
+        except SSRFSecurityError:
+            # Never bypass SSRF security violations!
+            raise
+        except (ContentSizeExceededError, UnsupportedContentTypeError):
+            raise
+        except ExtractionError as exc:
+            direct_fetch_error = exc
+            if exc.status_code == 403:
+                is_403_forbidden = True
+                logger.info(
+                    f"Direct connection to {clean_url} returned HTTP 403 Forbidden. Will attempt Jina Reader fallback."
+                )
+            else:
+                logger.info(
+                    f"Direct fetch failed ({type(exc).__name__}: {exc.message}). Will attempt Jina Reader fallback."
+                )
+
+        # 4. If direct fetch succeeded (we have HTML content):
+        if html_content:
+            # 4a. Primary Extractor: Trafilatura
+            (
+                trafilatura_text,
+                trafilatura_title,
+                published_at,
+                author,
+                publisher,
+                last_updated_at,
+            ) = self._extract_with_trafilatura(
+                html_content=html_content, target_url=final_url
+            )
+
+            if trafilatura_text and len(trafilatura_text.strip()) >= MIN_USEFUL_CONTENT_LENGTH:
+                logger.info(
+                    f"Trafilatura successfully extracted {len(trafilatura_text)} characters from {final_url}"
+                )
+                return WebsiteExtractionResult(
+                    url=final_url,
+                    title=trafilatura_title,
+                    extracted_content=trafilatura_text.strip(),
+                    author=author,
+                    publisher=publisher,
+                    domain=domain,
+                    published_at=published_at,
+                    last_updated_at=last_updated_at,
+                    extraction_method="trafilatura",
+                    extraction_status="success",
+                )
+
             logger.info(
-                f"Trafilatura successfully extracted {len(trafilatura_text)} characters from {final_url}"
-            )
-            return WebsiteExtractionResult(
-                url=final_url,
-                title=trafilatura_title,
-                extracted_content=trafilatura_text.strip(),
-                published_at=published_at,
-                extraction_method="trafilatura",
-                extraction_status="success",
+                f"Trafilatura yielded insufficient content ({len(trafilatura_text) if trafilatura_text else 0} chars) "
+                f"for {final_url}. Attempting Jina Reader fallback."
             )
 
-        logger.info(
-            f"Trafilatura yielded insufficient content ({len(trafilatura_text) if trafilatura_text else 0} chars) "
-            f"for {final_url}. Attempting Jina Reader fallback."
+            # 4b. Fallback 1: Jina Reader API
+            jina_text, jina_title = await self._extract_with_jina(final_url)
+
+            if jina_text and len(jina_text.strip()) >= MIN_USEFUL_CONTENT_LENGTH:
+                logger.info(
+                    f"Jina Reader fallback successfully extracted {len(jina_text)} characters for {final_url}"
+                )
+                return WebsiteExtractionResult(
+                    url=final_url,
+                    title=jina_title or trafilatura_title,
+                    extracted_content=jina_text.strip(),
+                    author=author,
+                    publisher=publisher,
+                    domain=domain,
+                    published_at=published_at,
+                    last_updated_at=last_updated_at,
+                    extraction_method="jina",
+                    extraction_status="success",
+                )
+
+            # 4c. Fallback 2: HTML Fallback Parser (lxml.html)
+            logger.info(f"Attempting HTML fallback parser for {final_url}")
+            html_text, html_title, html_author = self._extract_with_html_parser(
+                html_content, final_url
+            )
+
+            if html_text and len(html_text.strip()) >= MIN_USEFUL_CONTENT_LENGTH:
+                logger.info(
+                    f"HTML fallback parser successfully extracted {len(html_text)} characters for {final_url}"
+                )
+                return WebsiteExtractionResult(
+                    url=final_url,
+                    title=html_title or trafilatura_title,
+                    extracted_content=html_text.strip(),
+                    author=author or html_author,
+                    publisher=publisher,
+                    domain=domain,
+                    published_at=published_at,
+                    last_updated_at=last_updated_at,
+                    extraction_method="html_parser",
+                    extraction_status="success",
+                )
+
+            # 4d. Handle partial extraction if any text was collected
+            best_content = ""
+            best_method: str = "trafilatura"
+
+            for candidate_text, method_name in [
+                (trafilatura_text, "trafilatura"),
+                (jina_text, "jina"),
+                (html_text, "html_parser"),
+            ]:
+                if candidate_text and len(candidate_text.strip()) > len(best_content):
+                    best_content = candidate_text.strip()
+                    best_method = method_name
+
+            if best_content:
+                logger.warning(
+                    f"Extraction yielded only partial content ({len(best_content)} chars) for {final_url}"
+                )
+                return WebsiteExtractionResult(
+                    url=final_url,
+                    title=trafilatura_title or jina_title or html_title,
+                    extracted_content=best_content,
+                    author=author or html_author,
+                    publisher=publisher,
+                    domain=domain,
+                    published_at=published_at,
+                    last_updated_at=last_updated_at,
+                    extraction_method=best_method,  # type: ignore[arg-type]
+                    extraction_status="partial",
+                )
+
+        # 5. Direct fetch failed (e.g. HTTP 403 Forbidden, connection timeout, 5xx):
+        # Fallback to Jina Reader for public webpages without blindly retrying the forbidden endpoint
+        else:
+            logger.info(f"Attempting Jina Reader fallback after direct fetch failure for {clean_url}")
+            jina_text, jina_title = await self._extract_with_jina(clean_url)
+
+            if jina_text and len(jina_text.strip()) >= MIN_USEFUL_CONTENT_LENGTH:
+                logger.info(
+                    f"Jina Reader fallback rescued extraction ({len(jina_text)} chars) for {clean_url}"
+                )
+                return WebsiteExtractionResult(
+                    url=clean_url,
+                    title=jina_title,
+                    extracted_content=jina_text.strip(),
+                    author=None,
+                    publisher=None,
+                    domain=domain,
+                    published_at=None,
+                    last_updated_at=None,
+                    extraction_method="jina",
+                    extraction_status="success",
+                )
+
+        # 6. If every extraction method failed, return a specific, actionable error message
+        hostname_display = domain or clean_url
+        if is_403_forbidden:
+            raise ExtractionError(
+                message=f"The website '{hostname_display}' is protected by access controls or anti-bot verification (HTTP 403 Forbidden).",
+                detail=(
+                    f"ClarityX cannot bypass security restrictions or CAPTCHA challenges on '{hostname_display}'. "
+                    "Please save or export the webpage content and use Document Upload (PDF/DOCX) or Pasted Text."
+                ),
+                status_code=403,
+            )
+        elif direct_fetch_error and direct_fetch_error.status_code == 404:
+            raise ExtractionError(
+                message=f"The requested webpage was not found on '{hostname_display}' (HTTP 404 Not Found).",
+                detail="Please verify the URL or provide the content via Document Upload or Pasted Text.",
+                status_code=404,
+            )
+        elif direct_fetch_error and direct_fetch_error.status_code == 504:
+            raise ExtractionError(
+                message=f"Request to '{hostname_display}' timed out.",
+                detail="The website took too long to respond. Please check the URL or provide the content via Document Upload or Pasted Text.",
+                status_code=504,
+            )
+        else:
+            raise ExtractionError(
+                message=f"Unable to extract meaningful readable content from '{hostname_display}'.",
+                detail=(
+                    f"All extraction methods (Trafilatura, Jina Reader, and HTML parser) failed to retrieve usable text. "
+                    "Please provide the content via Document Upload (PDF/DOCX) or Pasted Text."
+                ),
+                status_code=422,
+            )
+
+    async def _extract_pdf_url(
+        self, target_url: str, domain: Optional[str]
+    ) -> WebsiteExtractionResult:
+        """Downloads a PDF document from a URL and extracts its content using DocumentExtractor."""
+        pdf_bytes, final_url = await fetch_pdf_document(target_url)
+
+        # Derive a safe filename from the URL path
+        url_path = urlsplit(final_url).path
+        filename = Path(url_path).name or "document.pdf"
+        if not filename.lower().endswith(".pdf"):
+            filename = f"{filename}.pdf"
+
+        # Use DocumentExtractor to extract text, title, author, and date safely
+        doc_extractor = DocumentExtractor()
+        doc_result = doc_extractor.extract(pdf_bytes, filename=filename)
+
+        status = doc_result.extraction_status
+        # If extracted content is fewer than MIN_USEFUL_CONTENT_LENGTH (e.g. 13 chars), mark as partial
+        if status == "success" and len(doc_result.extracted_content.strip()) < MIN_USEFUL_CONTENT_LENGTH:
+            status = "partial"
+
+        return WebsiteExtractionResult(
+            url=final_url,
+            title=doc_result.title,
+            extracted_content=doc_result.extracted_content,
+            author=doc_result.author,
+            publisher=None,
+            domain=domain or normalize_domain(final_url),
+            published_at=doc_result.document_created_at,
+            last_updated_at=None,
+            extraction_method="pdf",
+            extraction_status=status,
         )
 
-        # 4. Attempt fallback extraction using Jina Reader
-        jina_text, jina_title = await self._extract_with_jina(final_url)
+    def _extract_with_html_parser(
+        self, html_content: str, target_url: str
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """Fallback extractor using lxml.html when Trafilatura and Jina yield insufficient text.
 
-        if jina_text and len(jina_text.strip()) >= MIN_USEFUL_CONTENT_LENGTH:
-            logger.info(
-                f"Jina Reader fallback successfully extracted {len(jina_text)} characters for {final_url}"
+        Extracts title, meta description, and clean text from article/main/body tags,
+        stripping scripts, styles, noscript, svg, nav, and footers.
+
+        Returns:
+            Tuple of (clean_text, title, author)
+        """
+        if not html_content or not html_content.strip():
+            return None, None, None
+
+        try:
+            doc = lxml.html.fromstring(html_content)
+
+            # 1. Title extraction
+            title = None
+            title_tag = doc.find(".//title")
+            if title_tag is not None and title_tag.text:
+                title = " ".join(title_tag.text.split()).strip()
+
+            if not title:
+                og_title = doc.xpath(
+                    "//meta[@property='og:title']/@content | //meta[@name='twitter:title']/@content"
+                )
+                if og_title and str(og_title[0]).strip():
+                    title = str(og_title[0]).strip()
+
+            # 2. Author extraction
+            author = None
+            meta_author = doc.xpath(
+                "//meta[@name='author']/@content | //meta[@property='article:author']/@content"
             )
-            return WebsiteExtractionResult(
-                url=final_url,
-                title=jina_title or trafilatura_title,
-                extracted_content=jina_text.strip(),
-                published_at=published_at,  # Preserve date from metadata if found earlier
-                extraction_method="jina",
-                extraction_status="success",
-            )
+            if meta_author and str(meta_author[0]).strip():
+                author = str(meta_author[0]).strip()
 
-        # 5. Handle partial extraction or total failure
-        best_content = ""
-        best_method: str = "trafilatura"
+            # 3. Clean DOM: drop non-content elements
+            for tag in doc.xpath(
+                "//script | //style | //noscript | //svg | //nav | //footer | //header | //aside | //form"
+            ):
+                tag.drop_tree()
 
-        if trafilatura_text and len(trafilatura_text.strip()) > 0:
-            best_content = trafilatura_text.strip()
-            best_method = "trafilatura"
-        elif jina_text and len(jina_text.strip()) > 0:
-            best_content = jina_text.strip()
-            best_method = "jina"
+            # 4. Extract content: prefer <article> or <main> if present with substantial text
+            article_nodes = doc.xpath("//article | //main")
+            best_text = ""
+            if article_nodes:
+                for node in article_nodes:
+                    node_text = " ".join(node.text_content().split())
+                    if len(node_text) > len(best_text):
+                        best_text = node_text
 
-        if best_content:
-            logger.warning(
-                f"Extraction yielded only partial content ({len(best_content)} chars) for {final_url}"
-            )
-            return WebsiteExtractionResult(
-                url=final_url,
-                title=trafilatura_title or jina_title,
-                extracted_content=best_content,
-                published_at=published_at,
-                extraction_method=best_method,  # type: ignore[arg-type]
-                extraction_status="partial",
-            )
+            # If article/main had < 100 chars, fall back to entire body text
+            if len(best_text) < MIN_USEFUL_CONTENT_LENGTH:
+                best_text = " ".join(doc.text_content().split())
 
-        # Both engines failed completely
-        logger.error(f"Complete extraction failure across Trafilatura and Jina for {final_url}")
-        raise ExtractionError(
-            message="Unable to extract meaningful readable content from the requested website.",
-            detail="Both primary (Trafilatura) and fallback (Jina Reader) extractors failed to find article content.",
-            status_code=422,
-        )
+            clean_text = best_text.strip()
+            if not clean_text:
+                return None, title, author
+
+            return clean_text, title, author
+
+        except Exception as exc:
+            logger.warning(f"Fallback HTML parser error for {target_url}: {type(exc).__name__}")
+            return None, None, None
 
     def _extract_with_trafilatura(
         self, html_content: str, target_url: str
-    ) -> Tuple[Optional[str], Optional[str], Optional[datetime]]:
+    ) -> Tuple[
+        Optional[str],
+        Optional[str],
+        Optional[datetime],
+        Optional[str],
+        Optional[str],
+        Optional[datetime],
+    ]:
         """Parses raw HTML using Trafilatura without performing any network calls.
 
         Returns:
-            Tuple of (extracted_text, title, published_date)
+            Tuple of (extracted_text, title, published_date, author, publisher, last_updated_at)
         """
         if not html_content or not isinstance(html_content, str):
-            return None, None, None
+            return None, None, None, None, None, None
 
         # Extract main text
         try:
@@ -173,9 +431,12 @@ class WebsiteExtractor:
             logger.warning(f"Trafilatura extract parsing exception: {type(exc).__name__}")
             extracted_text = None
 
-        # Extract metadata (title, publication date)
+        # Extract metadata (title, publication date, author, publisher, last_updated_at)
         title: Optional[str] = None
         published_at: Optional[datetime] = None
+        author: Optional[str] = None
+        publisher: Optional[str] = None
+        last_updated_at: Optional[datetime] = None
 
         try:
             metadata = trafilatura.extract_metadata(
@@ -183,19 +444,100 @@ class WebsiteExtractor:
                 default_url=target_url,
             )
             if metadata:
-                if metadata.title and metadata.title.strip():
-                    title = metadata.title.strip()
+                if (
+                    hasattr(metadata, "title")
+                    and isinstance(metadata.title, str)
+                    and metadata.title.strip()
+                ):
+                    title = metadata.title.strip()[:255]
 
-                if metadata.date:
+                if hasattr(metadata, "date") and metadata.date:
                     try:
                         # Attempt standard ISO parsing or fuzzy dateutil parsing
                         published_at = dateutil.parser.parse(str(metadata.date))
                     except Exception:
                         published_at = None
+
+                if (
+                    hasattr(metadata, "author")
+                    and isinstance(metadata.author, str)
+                    and metadata.author.strip()
+                ):
+                    author = metadata.author.strip()[:255]
+
+                if (
+                    hasattr(metadata, "sitename")
+                    and isinstance(metadata.sitename, str)
+                    and metadata.sitename.strip()
+                ):
+                    publisher = metadata.sitename.strip()[:255]
         except Exception as exc:
             logger.warning(f"Trafilatura metadata extraction exception: {type(exc).__name__}")
 
-        return extracted_text, title, published_at
+        # Meta tag fallbacks if trafilatura did not discover them
+        if not author and html_content:
+            author_match = re.search(
+                r'<meta[^>]+(?:name|property)=["\'](?:author|article:author|byl|dc\.creator)["\'][^>]+content=["\']([^"\']+)["\']',
+                html_content,
+                re.IGNORECASE,
+            ) or re.search(
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property)=["\'](?:author|article:author|byl|dc\.creator)["\']',
+                html_content,
+                re.IGNORECASE,
+            )
+            if author_match:
+                cand = author_match.group(1).strip()
+                if cand:
+                    author = cand[:255]
+
+        if not publisher and html_content:
+            pub_match = re.search(
+                r'<meta[^>]+(?:name|property)=["\'](?:og:site_name|publisher|dc\.publisher)["\'][^>]+content=["\']([^"\']+)["\']',
+                html_content,
+                re.IGNORECASE,
+            ) or re.search(
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property)=["\'](?:og:site_name|publisher|dc\.publisher)["\']',
+                html_content,
+                re.IGNORECASE,
+            )
+            if pub_match:
+                cand = pub_match.group(1).strip()
+                if cand:
+                    publisher = cand[:255]
+
+        if not published_at and html_content:
+            pub_date_match = re.search(
+                r'<meta[^>]+(?:name|property)=["\'](?:article:published_time|publication_date|date|dc\.date)["\'][^>]+content=["\']([^"\']+)["\']',
+                html_content,
+                re.IGNORECASE,
+            ) or re.search(
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property)=["\'](?:article:published_time|publication_date|date|dc\.date)["\']',
+                html_content,
+                re.IGNORECASE,
+            )
+            if pub_date_match:
+                try:
+                    published_at = dateutil.parser.parse(pub_date_match.group(1).strip())
+                except Exception:
+                    pass
+
+        if not last_updated_at and html_content:
+            modified_match = re.search(
+                r'<meta[^>]+(?:name|property|itemprop)=["\'](?:article:modified_time|og:updated_time|last-modified|dateModified)["\'][^>]+content=["\']([^"\']+)["\']',
+                html_content,
+                re.IGNORECASE,
+            ) or re.search(
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property|itemprop)=["\'](?:article:modified_time|og:updated_time|last-modified|dateModified)["\']',
+                html_content,
+                re.IGNORECASE,
+            )
+            if modified_match:
+                try:
+                    last_updated_at = dateutil.parser.parse(modified_match.group(1).strip())
+                except Exception:
+                    pass
+
+        return extracted_text, title, published_at, author, publisher, last_updated_at
 
     async def _extract_with_jina(
         self, target_url: str
@@ -300,6 +642,19 @@ class WebsiteExtractor:
                     raw_text = raw_bytes.decode("utf-8", errors="replace")
 
                 if not raw_text.strip():
+                    return None, None
+
+                # Guard against Cloudflare challenge / anti-bot interstitial returned by Jina
+                lower_text = raw_text.lower()
+                if (
+                    "target url returned error 403" in lower_text
+                    or "just a moment..." in lower_text
+                    or "attention required! | cloudflare" in lower_text
+                    or "cf-browser-verification" in lower_text
+                ):
+                    logger.warning(
+                        f"Jina Reader returned anti-bot challenge or 403 error page for {target_url}"
+                    )
                     return None, None
 
                 # Extract title if Jina prepends "Title: <title>" header
@@ -724,11 +1079,31 @@ class DocumentExtractor:
             )
 
         metadata_title = None
+        metadata_author = None
+        doc_created_at = None
+        doc_modified_at = None
         try:
-            if reader.metadata and reader.metadata.title:
-                t = str(reader.metadata.title).strip()
-                if t:
-                    metadata_title = t
+            if reader.metadata:
+                if getattr(reader.metadata, "title", None):
+                    t = str(reader.metadata.title).strip()
+                    if t:
+                        metadata_title = t
+                if getattr(reader.metadata, "author", None):
+                    a = str(reader.metadata.author).strip()
+                    if a:
+                        metadata_author = a[:255]
+
+                # PDF creation date
+                raw_cdate = getattr(reader.metadata, "creation_date", None)
+                if not raw_cdate and hasattr(reader.metadata, "get"):
+                    raw_cdate = reader.metadata.get("/CreationDate")
+                doc_created_at = parse_document_date(raw_cdate)
+
+                # PDF modification date
+                raw_mdate = getattr(reader.metadata, "modification_date", None)
+                if not raw_mdate and hasattr(reader.metadata, "get"):
+                    raw_mdate = reader.metadata.get("/ModDate")
+                doc_modified_at = parse_document_date(raw_mdate)
         except Exception:
             pass  # Corrupted metadata should not fail extraction
 
@@ -808,6 +1183,9 @@ class DocumentExtractor:
             character_count=char_count,
             word_count=word_count,
             page_count=num_pages,
+            author=metadata_author,
+            document_created_at=doc_created_at,
+            document_modified_at=doc_modified_at,
             extraction_method="pypdf",
             extraction_status="partial" if is_partial else "success",
             error_message=None,
@@ -830,11 +1208,23 @@ class DocumentExtractor:
             ) from exc
 
         metadata_title = None
+        metadata_author = None
+        doc_created_at = None
+        doc_modified_at = None
         try:
-            if doc.core_properties and doc.core_properties.title:
-                t = str(doc.core_properties.title).strip()
-                if t:
-                    metadata_title = t
+            if doc.core_properties:
+                if getattr(doc.core_properties, "title", None):
+                    t = str(doc.core_properties.title).strip()
+                    if t:
+                        metadata_title = t
+                if getattr(doc.core_properties, "author", None):
+                    a = str(doc.core_properties.author).strip()
+                    if a:
+                        metadata_author = a[:255]
+                if getattr(doc.core_properties, "created", None):
+                    doc_created_at = parse_document_date(doc.core_properties.created)
+                if getattr(doc.core_properties, "modified", None):
+                    doc_modified_at = parse_document_date(doc.core_properties.modified)
         except Exception:
             pass
 
@@ -939,6 +1329,9 @@ class DocumentExtractor:
             character_count=char_count,
             word_count=word_count,
             page_count=None,
+            author=metadata_author,
+            document_created_at=doc_created_at,
+            document_modified_at=doc_modified_at,
             extraction_method="python-docx",
             extraction_status="partial" if is_partial else "success",
             error_message=None,

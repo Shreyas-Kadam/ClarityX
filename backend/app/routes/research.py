@@ -14,6 +14,7 @@ from app.database.repositories import ResearchRepository, SourceRepository
 from app.dependencies.auth import get_current_user
 from app.schemas.analysis import SourceAnalysisInput
 from app.schemas.auth import AuthenticatedUser
+from app.schemas.source import normalize_domain
 from app.schemas.research import (
     ALLOWED_RESEARCH_STATUSES,
     DeleteResponse,
@@ -345,13 +346,19 @@ async def analyze_research_session(
             detail="OpenRouter credentials are missing or empty in configuration.",
         )
 
-    # 6. Convert to SourceAnalysisInput schema (preserving source_code, title, url, extracted_content)
+    # 6. Convert to SourceAnalysisInput schema (preserving source_code, title, url, extracted_content, and metadata)
     sources_input = [
         SourceAnalysisInput(
             source_code=s["source_code"],
             title=s.get("title") or "Untitled Source",
             source_type=s.get("source_type", "website"),
             url=s.get("url"),
+            author=s.get("author"),
+            publisher=s.get("publisher"),
+            domain=s.get("domain") or (normalize_domain(s.get("url")) if s.get("url") else None),
+            published_at=s.get("published_at"),
+            last_updated_at=s.get("last_updated_at"),
+            accessed_at=s.get("accessed_at"),
             extracted_content=s.get("extracted_content") or "",
         )
         for s in usable_sources

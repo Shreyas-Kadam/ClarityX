@@ -118,12 +118,14 @@ When an authenticated user submits a research request:
 2. FastAPI validates the request using Pydantic schemas and enforces synchronous MVP limits (max 5 sources, 60s overall timeout).
 3. The research service creates a `research_sessions` record in Supabase with `user_id` linked to the authenticated user's profile.
 4. The extraction service retrieves available content:
-   - Trafilatura is attempted first.
+   - Trafilatura is attempted first, extracting clean text, title, author, publisher, publication date, and last-updated timestamps.
    - If extraction fails or returns fewer than 100 useful characters, Jina Reader is attempted.
+   - For uploaded PDF/DOCX documents, metadata is extracted in-memory; creation/modification dates are tracked distinctly and never mapped to publication dates.
+   - Web domains are normalized (lowercased, stripped of ports, userinfo, and `www.`).
    - Content is stored in `sources.extracted_content` and treated as untrusted input.
 5. Each source is assigned an identifier such as S1, S2, and S3.
 6. If `enable_search` is true, the search service discovers additional web sources via DuckDuckGo.
-7. Extracted source texts and metadata are formatted into an AI analysis prompt.
+7. Extracted source texts and enriched metadata (domain, author, publisher, published_at, last_updated_at, accessed_at) are formatted into an AI analysis prompt with strict attribution and temporal freshness instructions.
 8. OpenRouter processes the information using structured output.
 9. The backend validates the AI response:
    - Evidence quotes returned by the AI are checked against the corresponding source text; unmatched quotes are flagged or rejected.

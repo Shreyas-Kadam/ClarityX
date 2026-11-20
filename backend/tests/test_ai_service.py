@@ -244,7 +244,8 @@ def test_build_analysis_prompt_prompt_injection_isolation():
 
     # The injection text is strictly inside the bounded source block
     assert malicious_text in user_prompt
-    assert f"--- BEGIN SOURCE [S1] ---\nCode: S1\nTitle: Attacker Page\nType: website\nURL: https://attacker.com\nContent:\n{malicious_text}\n--- END SOURCE [S1] ---" in user_prompt
+    assert "--- BEGIN SOURCE [S1] ---" in user_prompt
+    assert f"Content:\n{malicious_text}\n--- END SOURCE [S1] ---" in user_prompt
 
 
 def test_build_analysis_prompt_source_truncation():

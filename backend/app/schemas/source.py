@@ -2,8 +2,50 @@
 
 from datetime import datetime
 from typing import List, Literal, Optional
+from urllib.parse import urlsplit
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def normalize_domain(url_or_netloc: Optional[str]) -> Optional[str]:
+    """Normalizes a URL or netloc into a clean lowercase root domain or hostname.
+
+    Strips port numbers, userinfo, and leading 'www.' prefix.
+    Returns None if the input is empty or invalid.
+    """
+    if not url_or_netloc or not isinstance(url_or_netloc, str):
+        return None
+    raw = url_or_netloc.strip()
+    if not raw:
+        return None
+
+    if "://" in raw or raw.startswith("//"):
+        try:
+            netloc = urlsplit(raw).netloc
+        except Exception:
+            netloc = raw
+    else:
+        netloc = raw.split("/")[0]
+
+    # Strip userinfo (user:pass@)
+    if "@" in netloc:
+        netloc = netloc.split("@")[-1]
+
+    # Strip port (:8080)
+    if ":" in netloc:
+        netloc = netloc.split(":")[0]
+
+    netloc = netloc.strip().lower()
+
+    # Strip leading "www."
+    if netloc.startswith("www.") and len(netloc) > 4:
+        netloc = netloc[4:]
+
+    # Basic hostname validation
+    if not netloc or " " in netloc:
+        return None
+
+    return netloc[:255]
 
 
 class WebsiteExtractRequest(BaseModel):
@@ -28,8 +70,12 @@ class WebsiteExtractionResult(BaseModel):
     url: str
     title: Optional[str] = None
     extracted_content: str = ""
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    domain: Optional[str] = None
     published_at: Optional[datetime] = None
-    extraction_method: Literal["trafilatura", "jina"] = "trafilatura"
+    last_updated_at: Optional[datetime] = None
+    extraction_method: Literal["trafilatura", "jina", "html_parser", "pdf"] = "trafilatura"
     extraction_status: Literal["success", "partial", "failed"] = "success"
     error_message: Optional[str] = None
 
@@ -103,6 +149,9 @@ class DocumentExtractionResult(BaseModel):
     character_count: int
     word_count: int
     page_count: Optional[int] = None
+    author: Optional[str] = None
+    document_created_at: Optional[datetime] = None
+    document_modified_at: Optional[datetime] = None
     extraction_method: Literal["pypdf", "python-docx"]
     extraction_status: Literal["success", "partial"] = "success"
     error_message: Optional[str] = None
@@ -145,9 +194,15 @@ class SourceResponse(BaseModel):
     url: Optional[str] = None
     source_type: Literal["website", "pasted_text", "document"]
     extracted_content: str = ""
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    domain: Optional[str] = None
+    published_at: Optional[datetime] = None
+    last_updated_at: Optional[datetime] = None
+    document_created_at: Optional[datetime] = None
+    document_modified_at: Optional[datetime] = None
     character_count: Optional[int] = None
     word_count: Optional[int] = None
-    published_at: Optional[datetime] = None
     accessed_at: datetime
     extraction_status: Literal["success", "partial", "failed"] = "success"
     created_at: datetime
@@ -155,13 +210,15 @@ class SourceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @model_validator(mode="after")
-    def compute_counts(self) -> "SourceResponse":
-        """Computes character and word counts dynamically if not explicitly provided."""
+    def compute_counts_and_domain(self) -> "SourceResponse":
+        """Computes character and word counts, and derives domain dynamically."""
         content = self.extracted_content or ""
         if self.character_count is None:
             self.character_count = len(content)
         if self.word_count is None:
             self.word_count = len(content.split()) if content.strip() else 0
+        if self.domain is None and self.url:
+            self.domain = normalize_domain(self.url)
         return self
 
 
@@ -178,12 +235,23 @@ class SourcePreviewResponse(BaseModel):
         default="",
         description="Truncated preview of extracted content (maximum 250 characters + '...' if truncated).",
     )
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    domain: Optional[str] = None
     published_at: Optional[datetime] = None
+    last_updated_at: Optional[datetime] = None
     accessed_at: datetime
     extraction_status: Literal["success", "partial", "failed"] = "success"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def compute_preview_domain(self) -> "SourcePreviewResponse":
+        """Derives root domain dynamically from URL if not already stored."""
+        if self.domain is None and self.url:
+            self.domain = normalize_domain(self.url)
+        return self
 
 
 class SourceListResponse(BaseModel):

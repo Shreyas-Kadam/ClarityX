@@ -61,12 +61,20 @@ class Settings:
     )
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
     AI_REQUEST_TIMEOUT: float = float(os.getenv("AI_REQUEST_TIMEOUT", "60.0"))
+    MAX_AI_OUTPUT_TOKENS: int = int(os.getenv("MAX_AI_OUTPUT_TOKENS", "4096"))
     MAX_SOURCE_CONTENT_CHARS_FOR_AI: int = int(
         os.getenv("MAX_SOURCE_CONTENT_CHARS_FOR_AI", "12000")
     )
 
     def __init__(self):
         self.AI_REQUEST_TIMEOUT = float(os.getenv("AI_REQUEST_TIMEOUT", "60.0"))
+        self.MAX_AI_OUTPUT_TOKENS = int(os.getenv("MAX_AI_OUTPUT_TOKENS", "4096"))
+        self.OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+        self.SEC_CONTACT_EMAIL = os.getenv("SEC_CONTACT_EMAIL", "research@clarityx.ai")
+        self.SEC_USER_AGENT = os.getenv(
+            "SEC_USER_AGENT",
+            f"ClarityXResearch/0.1.0 ({self.SEC_CONTACT_EMAIL})",
+        )
 
     # Extraction Settings (Phase 4)
     MAX_WEBSITE_CONTENT_LENGTH: int = int(
@@ -80,6 +88,11 @@ class Settings:
     JINA_READER_BASE_URL: str = os.getenv("JINA_READER_BASE_URL", "https://r.jina.ai")
     USER_AGENT: str = (
         "ClarityX/0.1.0 (AI Information Gap Detection; +https://github.com/ClarityX)"
+    )
+    SEC_CONTACT_EMAIL: str = os.getenv("SEC_CONTACT_EMAIL", "research@clarityx.ai")
+    SEC_USER_AGENT: str = os.getenv(
+        "SEC_USER_AGENT",
+        f"ClarityXResearch/0.1.0 ({os.getenv('SEC_CONTACT_EMAIL', 'research@clarityx.ai')})",
     )
     MAX_PASTED_TEXT_LENGTH: int = int(
         os.getenv("MAX_PASTED_TEXT_LENGTH", "1048576")

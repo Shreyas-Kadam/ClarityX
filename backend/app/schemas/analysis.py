@@ -4,6 +4,7 @@ Defines structured models for OpenRouter AI structured output parsing,
 evidence grounding, and prompt construction.
 """
 
+from datetime import datetime
 from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,6 +36,33 @@ class SourceAnalysisInput(BaseModel):
         default=None,
         max_length=2048,
         description="Source URL when available.",
+    )
+    author: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Author attribution when available from source metadata.",
+    )
+    publisher: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Publisher or publication name when available.",
+    )
+    domain: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Normalized root domain of the source.",
+    )
+    published_at: Optional[datetime] = Field(
+        default=None,
+        description="Original publication date timestamp, if reliably known.",
+    )
+    last_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last updated timestamp, if distinct and reliably known.",
+    )
+    accessed_at: Optional[datetime] = Field(
+        default=None,
+        description="Date and time when the source was accessed or ingested.",
     )
     extracted_content: str = Field(
         default="",

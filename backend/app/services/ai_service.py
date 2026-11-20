@@ -5,6 +5,7 @@ and structured output validation for information gap detection.
 """
 
 import asyncio
+from datetime import datetime
 import json
 import logging
 from typing import List, Optional, Tuple
@@ -69,6 +70,16 @@ def build_analysis_prompt(
         "- 'outdated': Information that is superseded, expired, obsolete, or contradicted by more recent dates or updated contexts.\n"
         "- 'conflicting': Direct contradictions, disagreements, or mutually exclusive claims made between different sources.\n"
         "- 'unverified': Claims, statistics, or assertions made in the sources that lack sufficient verifiable supporting evidence or credible attribution.\n\n"
+        "=== SOURCE METADATA, ATTRIBUTION & TEMPORAL RULES ===\n"
+        "1. Attribution Reliability: Only treat authors and publishers as verified when explicitly stated in the source metadata; never infer, assume, or invent author credentials or publisher identity.\n"
+        "2. Publication vs Modification: Distinguish between original publication dates and subsequent update/revision dates. If a date is undetermined, do not guess or fabricate one.\n"
+        "3. Temporal Freshness: When evaluating whether information is 'outdated', compare publication and last-updated dates across sources. An older source may be superseded by newer data.\n"
+        "4. Undetermined Dates: When a source's publication date is undetermined, treat its temporal validity with caution and note the lack of chronological anchoring under 'unverified' or follow-up verification items.\n"
+        "5. Domain Context: Use source domains to understand institutional context, but never treat top-level domain extensions (.edu, .gov, .org) as definitive proof of truthfulness without verifiable evidence.\n"
+        "6. Pasted Text and Documents: Note that pasted text and uploaded documents often lack verified publication dates, web domains, or publisher credentials unless explicitly contained within their content.\n"
+        "7. Cross-Source Attribution: When sources disagree, check whether conflicts stem from chronological changes over time (outdated) or substantive methodological/viewpoint disagreement (conflicting).\n"
+        "8. Evidence Grounding: Every quotation cited as evidence must be an exact verbatim excerpt from the source text and must never be altered or attributed to a different source code.\n"
+        "9. Missing vs Disproven: Clearly distinguish between missing evidence (topics unaddressed in any source) and evidence that disproves or refutes a claim.\n\n"
         "=== EVIDENCE & CITATION RULES ===\n"
         "1. Every evidence quotation MUST be an EXACT, VERBATIM excerpt copied directly from the specified source text.\n"
         "2. Use the exact source code (e.g. 'S1', 'S2') provided for that source.\n"
@@ -77,9 +88,9 @@ def build_analysis_prompt(
         "5. Distinguish missing evidence from evidence that disproves a claim.\n\n"
         "=== VERIFICATION CHECKLIST & UNRESOLVED QUESTIONS ===\n"
         "1. Actionable follow-up steps and broader unresolved questions must be placed in the 'verification_checklist'.\n"
-        "2. For broad, open research questions about the topic as a whole (where finding_id=NULL), set 'is_general_unresolved_question': true.\n"
+        "2. For broad, open research questions about the topic as a whole (where finding_id=NULL), set 'is_general_unresolved_question': true and 'related_finding_title': null.\n"
         "3. For specific verification tasks directly linked to an identified finding, set 'is_general_unresolved_question': false "
-        "and provide 'related_finding_title'.\n\n"
+        "and provide 'related_finding_title'. When setting 'related_finding_title', copy the exact finding 'title' verbatim without alterations or added quotation marks.\n\n"
         "=== OUTPUT FORMAT ===\n"
         "You must return ONLY a single valid JSON object matching the following structure:\n"
         "{\n"
@@ -122,12 +133,34 @@ def build_analysis_prompt(
                 f"[NOTICE: Content truncated. Displaying first {max_source_chars} of {total_chars} characters.]"
             )
 
+        pub_str = (
+            s.published_at.strftime("%Y-%m-%d")
+            if isinstance(s.published_at, datetime)
+            else (str(s.published_at) if s.published_at else "Undetermined")
+        )
+        upd_str = (
+            s.last_updated_at.strftime("%Y-%m-%d")
+            if isinstance(s.last_updated_at, datetime)
+            else (str(s.last_updated_at) if s.last_updated_at else "N/A")
+        )
+        acc_str = (
+            s.accessed_at.strftime("%Y-%m-%d")
+            if isinstance(s.accessed_at, datetime)
+            else (str(s.accessed_at) if s.accessed_at else "N/A")
+        )
+
         source_block = (
             f"--- BEGIN SOURCE [{s.source_code}] ---\n"
             f"Code: {s.source_code}\n"
             f"Title: {s.title}\n"
             f"Type: {s.source_type}\n"
             f"URL: {s.url or 'N/A'}\n"
+            f"Domain: {s.domain or 'N/A'}\n"
+            f"Author: {s.author or 'Unknown'}\n"
+            f"Publisher: {s.publisher or 'Unknown'}\n"
+            f"Publication Date: {pub_str}\n"
+            f"Last Updated: {upd_str}\n"
+            f"Accessed Date: {acc_str}\n"
             f"Content:\n{content}\n"
             f"--- END SOURCE [{s.source_code}] ---"
         )
@@ -275,6 +308,7 @@ class AIService:
         self.settings = settings or get_settings()
         self.model = self.settings.OPENROUTER_MODEL
         self.timeout = self.settings.AI_REQUEST_TIMEOUT
+        self.max_tokens = getattr(self.settings, "MAX_AI_OUTPUT_TOKENS", 4096)
         self.base_url = self.settings.OPENROUTER_BASE_URL
         self.max_source_chars = self.settings.MAX_SOURCE_CONTENT_CHARS_FOR_AI
 
@@ -373,6 +407,7 @@ class AIService:
                     ],
                     response_format={"type": "json_object"},
                     temperature=0.2,
+                    max_tokens=self.max_tokens,
                 ),
                 timeout=self.timeout,
             )

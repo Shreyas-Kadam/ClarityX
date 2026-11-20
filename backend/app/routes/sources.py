@@ -92,8 +92,12 @@ async def add_website_source(
         or not extraction_result.extracted_content.strip()
     ):
         raise ExtractionError(
-            message="Unable to extract meaningful readable content from the requested website.",
-            detail=extraction_result.error_message or "Extraction failed to produce usable content.",
+            message=extraction_result.error_message
+            or "Unable to extract meaningful readable content from the requested website.",
+            detail=(
+                "All extraction methods failed to produce usable text from this URL. "
+                "Please provide the content via Document Upload (PDF/DOCX) or Pasted Text."
+            ),
             status_code=422,
         )
 
@@ -105,7 +109,11 @@ async def add_website_source(
         extracted_content=extraction_result.extracted_content,
         title=extraction_result.title or "Untitled Source",
         url=extraction_result.url,
+        author=extraction_result.author,
+        publisher=extraction_result.publisher,
+        domain=extraction_result.domain,
         published_at=extraction_result.published_at,
+        last_updated_at=extraction_result.last_updated_at,
         extraction_status=extraction_result.extraction_status,
     )
 
@@ -248,7 +256,11 @@ async def add_document_source(
         extracted_content=extraction_result.extracted_content,
         title=extraction_result.title,
         url=None,
+        author=extraction_result.author,
+        publisher=None,
+        domain=None,
         published_at=None,
+        last_updated_at=None,
         extraction_status=extraction_result.extraction_status,
     )
 
@@ -259,10 +271,19 @@ async def add_document_source(
             detail="The database was unable to create the source record.",
         )
 
+    # Attach in-memory document metadata for immediate API response
+    response_data = dict(created_source)
+    if extraction_result.document_created_at:
+        response_data["document_created_at"] = extraction_result.document_created_at
+    if extraction_result.document_modified_at:
+        response_data["document_modified_at"] = extraction_result.document_modified_at
+    if extraction_result.author and not response_data.get("author"):
+        response_data["author"] = extraction_result.author
+
     return SourceEnvelope(
         success=True,
         message="Document source extracted and persisted successfully",
-        data=SourceResponse.model_validate(created_source),
+        data=SourceResponse.model_validate(response_data),
     )
 
 

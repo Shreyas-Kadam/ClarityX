@@ -95,7 +95,11 @@ Stores information about sources submitted or discovered during research.
 | url | TEXT | Source URL, nullable for pasted text |
 | source_type | TEXT | website, pasted_text, document |
 | extracted_content | TEXT | Full extracted source text |
+| author | TEXT | Author attribution when available from source metadata |
+| publisher | TEXT | Publisher or publication name when available |
+| domain | TEXT | Normalized root domain of the source |
 | published_at | TIMESTAMPTZ | Publication date, if available |
+| last_updated_at | TIMESTAMPTZ | Last updated or modified date, distinct from published_at |
 | accessed_at | TIMESTAMPTZ | Date the source was accessed |
 | extraction_status | TEXT | success, failed, partial |
 | created_at | TIMESTAMPTZ | Creation time |
@@ -313,4 +317,17 @@ This migration provisions:
   - Queries `SELECT COUNT(*) FROM public.sources WHERE research_id = NEW.research_id;`.
   - Raises a check violation exception if existing source count >= 5.
 - **Trigger**: `trg_enforce_source_capacity_limit` on `BEFORE INSERT ON public.sources FOR EACH ROW`.
+- **Application Steps**: Apply via Supabase Dashboard SQL Editor as documented in Section 13.2.
+
+### 13.5 Migration 004: Source Metadata Enrichment (Phase 2, Milestone 1)
+The PostgreSQL migration script is located at:
+`backend/app/database/migrations/004_source_metadata_enrichment.sql`
+
+This migration provisions:
+- **Columns added to `public.sources`**:
+  - `author` (TEXT): Author attribution extracted from metadata.
+  - `publisher` (TEXT): Publisher or publication name extracted from metadata.
+  - `domain` (TEXT): Normalized root domain of the source (e.g. `nature.com`).
+  - `last_updated_at` (TIMESTAMPTZ): Explicit last updated/modified timestamp distinct from `published_at`.
+- **Backward Compatibility**: Fully backward compatible with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The backend repository layer includes automatic fallback to base columns if the database has not yet applied this migration.
 - **Application Steps**: Apply via Supabase Dashboard SQL Editor as documented in Section 13.2.

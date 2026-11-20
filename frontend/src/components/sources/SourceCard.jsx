@@ -1,4 +1,4 @@
-import { Globe, FileText, File, ExternalLink, Trash2, Calendar, Clock } from 'lucide-react'
+import { Globe, FileText, File, ExternalLink, Trash2, Calendar, Clock, RefreshCw, User } from 'lucide-react'
 import { GlassCard } from '@/components/common/GlassCard'
 import { NeuButton } from '@/components/common/NeuButton'
 import { SourceStatusBadge } from './SourceStatusBadge'
@@ -32,6 +32,7 @@ function formatTimestamp(timestamp) {
  */
 export function SourceCard({ source, onDelete, onViewSource, isDeleting = false, disabled = false }) {
   const publishedFormatted = formatTimestamp(source.published_at)
+  const lastUpdatedFormatted = formatTimestamp(source.last_updated_at)
   const accessedFormatted = formatTimestamp(source.accessed_at)
 
   const typeConfig = {
@@ -67,12 +68,37 @@ export function SourceCard({ source, onDelete, onViewSource, isDeleting = false,
               <TypeIcon className="size-3.5" />
               {currentType.label}
             </span>
+            {source.domain && (
+              <span
+                className="px-2 py-0.5 rounded-lg bg-slate-100 text-[#2B2D42] text-xs font-mono font-medium border border-slate-200"
+                title="Source Root Domain"
+              >
+                {source.domain}
+              </span>
+            )}
             <SourceStatusBadge status={source.extraction_status} />
           </div>
 
           <h4 className="text-base font-bold text-[#2B2D42] leading-snug">
             {source.title || 'Untitled Source'}
           </h4>
+
+          {/* Author / Publisher Attribution */}
+          {(source.author || source.publisher) && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#8D99AE] pt-0.5">
+              {source.author && (
+                <span className="inline-flex items-center gap-1 text-[#2B2D42] font-medium" title="Author">
+                  <User className="size-3 text-[#8D99AE]" />
+                  {source.author}
+                </span>
+              )}
+              {source.publisher && (
+                <span className="text-[#8D99AE]" title="Publisher">
+                  via {source.publisher}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* URL for website sources */}
           {source.url && source.source_type === 'website' && (
@@ -163,14 +189,27 @@ export function SourceCard({ source, onDelete, onViewSource, isDeleting = false,
       </div>
 
       {/* Metadata Footer: Timestamps */}
-      {(publishedFormatted || accessedFormatted) && (
+      {(publishedFormatted || lastUpdatedFormatted || accessedFormatted || source.source_type === 'website') && (
         <div className="flex flex-wrap items-center gap-4 text-[11px] text-[#8D99AE] pt-1 border-t border-[#8D99AE]/15">
-          {publishedFormatted && (
+          {publishedFormatted ? (
             <span className="flex items-center gap-1" title="Publication Date">
               <Calendar className="size-3" />
               Published: {publishedFormatted}
             </span>
+          ) : source.source_type === 'website' ? (
+            <span className="flex items-center gap-1 text-[#8D99AE]/70" title="Publication Date Undetermined">
+              <Calendar className="size-3" />
+              Date: Undetermined
+            </span>
+          ) : null}
+
+          {lastUpdatedFormatted && (
+            <span className="flex items-center gap-1" title="Last Updated Date">
+              <RefreshCw className="size-3" />
+              Updated: {lastUpdatedFormatted}
+            </span>
           )}
+
           {accessedFormatted && (
             <span className="flex items-center gap-1" title="Accessed Date">
               <Clock className="size-3" />

@@ -4,6 +4,8 @@ from app.services.ssrf_service import (
     validate_url_syntax,
     resolve_and_validate_destination,
     fetch_website_content,
+    fetch_pdf_document,
+    build_request_headers,
     SSRFProtectedTransport,
 )
 from app.services.extraction_service import (

@@ -1,0 +1,235 @@
+{
+  "run_id": "76cc40dc",
+  "timestamp": "2026-11-19T07:22:29.631564+00:00",
+  "success": true,
+  "stages": {
+    "session_init": {
+      "session_id": "57ea4ce5-3baa-40b0-8f79-551a36e35d79",
+      "research_goal": "Comprehensive Technical Benchmark, Commercialization Timelines, and Safety Analysis of Next-Generation Solid-State EV Batteries"
+    },
+    "sources_ingested": [
+      {
+        "code": "S1",
+        "type": "website",
+        "title": "Sumitomo Metal Mining and Toyota Collaborate on Mass Production of Cathode Materials for All-Solid-State Batteries | Corporate | Global Newsroom | Toyota Motor Corporation Official Global Website",
+        "domain": "global.toyota",
+        "length": 3646
+      },
+      {
+        "code": "S2",
+        "type": "website",
+        "title": "A First Look at the QSE-5 B Sample",
+        "domain": "quantumscape.com",
+        "length": 6340
+      },
+      {
+        "code": "S3",
+        "type": "website",
+        "title": "Solid-state battery - Wikipedia",
+        "domain": "en.wikipedia.org",
+        "length": 66324
+      },
+      {
+        "code": "S4",
+        "type": "document",
+        "title": "Solid-State Battery Technical Benchmark Q3 2026",
+        "domain": null,
+        "length": 680
+      },
+      {
+        "code": "S5",
+        "type": "pasted_text",
+        "title": "Analyst Briefing Notes & Market Rumors",
+        "domain": null,
+        "length": 1115
+      }
+    ],
+    "findings_audit": {
+      "total": 8,
+      "by_category": {
+        "missing": 4,
+        "outdated": 1,
+        "conflicting": 1,
+        "unverified": 2
+      },
+      "by_severity": {
+        "high": 4,
+        "medium": 3,
+        "low": 1
+      },
+      "findings": [
+        {
+          "category": "missing",
+          "title": "Comprehensive Safety Analysis of Solid-State EV Batteries",
+          "severity": "high",
+          "confidence": 0.95,
+          "evidence_count": 2
+        },
+        {
+          "category": "conflicting",
+          "title": "Conflicting Commercialization Timelines for Toyota's Solid-State EV Batteries",
+          "severity": "high",
+          "confidence": 0.9,
+          "evidence_count": 2
+        },
+        {
+          "category": "unverified",
+          "title": "Unverified Claims of 'HyperDensity-X' Solid-State Battery Performance and Cost",
+          "severity": "high",
+          "confidence": 0.95,
+          "evidence_count": 1
+        },
+        {
+          "category": "missing",
+          "title": "Detailed Technical Benchmarks Across Multiple Manufacturers",
+          "severity": "medium",
+          "confidence": 0.9,
+          "evidence_count": 2
+        },
+        {
+          "category": "unverified",
+          "title": "Unverified Scalability of Sumitomo Metal Mining's Cathode Material Mass Production",
+          "severity": "medium",
+          "confidence": 0.8,
+          "evidence_count": 2
+        },
+        {
+          "category": "missing",
+          "title": "Environmental Impact and Recycling Protocols for Solid-State Batteries",
+          "severity": "high",
+          "confidence": 0.95,
+          "evidence_count": 1
+        },
+        {
+          "category": "missing",
+          "title": "Standard Automotive Warranty Terms for Dendrite-Induced Short Circuits",
+          "severity": "medium",
+          "confidence": 0.9,
+          "evidence_count": 1
+        },
+        {
+          "category": "outdated",
+          "title": "Outdated General Commercialization Outlook for Solid-State Batteries",
+          "severity": "low",
+          "confidence": 0.75,
+          "evidence_count": 1
+        }
+      ]
+    },
+    "evidence_grounding": {
+      "total": 12,
+      "grounded": 12,
+      "items": [
+        {
+          "finding_title": "Comprehensive Safety Analysis of Solid-State EV Batteries",
+          "source_code": "S3",
+          "evidence_type": "contextual",
+          "quote_length": 320,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Comprehensive Safety Analysis of Solid-State EV Batteries",
+          "source_code": "S4",
+          "evidence_type": "contextual",
+          "quote_length": 125,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Conflicting Commercialization Timelines for Toyota's Solid-State EV Batteries",
+          "source_code": "S1",
+          "evidence_type": "contradicting",
+          "quote_length": 87,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Conflicting Commercialization Timelines for Toyota's Solid-State EV Batteries",
+          "source_code": "S5",
+          "evidence_type": "contradicting",
+          "quote_length": 189,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Unverified Claims of 'HyperDensity-X' Solid-State Battery Performance and Cost",
+          "source_code": "S5",
+          "evidence_type": "supporting",
+          "quote_length": 315,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Detailed Technical Benchmarks Across Multiple Manufacturers",
+          "source_code": "S2",
+          "evidence_type": "contextual",
+          "quote_length": 395,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Detailed Technical Benchmarks Across Multiple Manufacturers",
+          "source_code": "S4",
+          "evidence_type": "contextual",
+          "quote_length": 680,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Unverified Scalability of Sumitomo Metal Mining's Cathode Material Mass Production",
+          "source_code": "S1",
+          "evidence_type": "contextual",
+          "quote_length": 295,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Unverified Scalability of Sumitomo Metal Mining's Cathode Material Mass Production",
+          "source_code": "S5",
+          "evidence_type": "supporting",
+          "quote_length": 189,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Environmental Impact and Recycling Protocols for Solid-State Batteries",
+          "source_code": "S5",
+          "evidence_type": "contextual",
+          "quote_length": 132,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Standard Automotive Warranty Terms for Dendrite-Induced Short Circuits",
+          "source_code": "S5",
+          "evidence_type": "contextual",
+          "quote_length": 84,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        },
+        {
+          "finding_title": "Outdated General Commercialization Outlook for Solid-State Batteries",
+          "source_code": "S3",
+          "evidence_type": "contextual",
+          "quote_length": 169,
+          "match_status": "EXACT VERBATIM",
+          "grounded": true
+        }
+      ]
+    },
+    "verification_audit": {
+      "unresolved_questions_count": 2,
+      "verification_items_count": 6,
+      "questions": [
+        "What are the current regulatory frameworks and standards being developed for the safety and performance of solid-state batteries in electric vehicles globally?",
+        "What are the specific advantages and disadvantages of different solid electrolyte materials (e.g., sulfides, oxides, polymers, chlorides) in terms of performance, safety, and manufacturability for EV applications?"
+      ]
+    },
+    "conclusion_audit": {
+      "verdict_status": "HIGH_UNCERTAINTY",
+      "verdict_title": "INCONCLUSIVE / HIGH-RISK CONTRADICTIONS DETECTED",
+      "high_severity_count": 4
+    }
+  }
+}
